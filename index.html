@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Puisi — Monolitik Stateful</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1>Aplikasi Puisi</h1>
+            <div id="user-nav">
+                <span id="info-user"></span>
+                <button id="btn-logout" style="display:none;" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <!-- PESAN / NOTIFIKASI -->
+        <div id="pesan"></div>
+
+        <!-- ================================== -->
+        <!-- BAGIAN SEBELUM LOGIN               -->
+        <!-- ================================== -->
+        <div id="area-auth">
+
+            <!-- FORM LOGIN -->
+            <section id="section-login">
+                <h2>Login</h2>
+                <form id="form-login" onsubmit="return prosesLogin(event)">
+                    <div class="form-group">
+                        <label for="login-username">Username</label>
+                        <input type="text" id="login-username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Login</button>
+                </form>
+            </section>
+
+            <!-- FORM REGISTER -->
+            <section id="section-register">
+                <h2>Register</h2>
+                <form id="form-register" onsubmit="return prosesRegister(event)">
+                    <div class="form-group">
+                        <label for="reg-username">Username</label>
+                        <input type="text" id="reg-username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password">Password</label>
+                        <input type="password" id="reg-password" name="password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-nama">Nama Lengkap</label>
+                        <input type="text" id="reg-nama" name="nama" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-noid">No. ID</label>
+                        <input type="text" id="reg-noid" name="no_id" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Register</button>
+                </form>
+            </section>
+
+        </div>
+
+        <!-- ================================== -->
+        <!-- BAGIAN SETELAH LOGIN               -->
+        <!-- ================================== -->
+        <div id="area-puisi" style="display:none;">
+
+            <!-- FORM SUBMIT PUISI -->
+            <section id="section-submit-puisi">
+                <h2>Submit Puisi Baru</h2>
+                <form id="form-puisi" onsubmit="return prosesSubmitPuisi(event)">
+                    <div class="form-group">
+                        <label for="puisi-judul">Judul</label>
+                        <input type="text" id="puisi-judul" name="judul" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="puisi-tgl">Tanggal Submit</label>
+                            <input type="date" id="puisi-tgl" name="tgl_submit" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="puisi-kategori">Kategori</label>
+                            <input type="text" id="puisi-kategori" name="kategori" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="puisi-keyword">Keyword</label>
+                        <input type="text" id="puisi-keyword" name="keyword" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="puisi-isi">Isi Puisi</label>
+                        <textarea id="puisi-isi" name="isi" rows="6" required></textarea>
+                    </div>
+                    <button type="submit" class="btn-primary">Kirim Puisi</button>
+                </form>
+            </section>
+
+            <!-- DAFTAR PUISI -->
+            <section id="section-daftar-puisi">
+                <div class="section-header">
+                    <h2>Daftar Puisi</h2>
+                    <button type="button" onclick="muatDaftarPuisi()">Muat Ulang Daftar</button>
+                </div>
+                <div class="table-container">
+                    <table id="tabel-puisi">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Tanggal</th>
+                                <th>Judul</th>
+                                <th>Kategori</th>
+                                <th>Penulis</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-puisi">
+                            <!-- Diisi oleh JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
