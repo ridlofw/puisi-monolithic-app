@@ -6,17 +6,30 @@
 // ============================================
 
 // 1. Mulai session di baris paling atas (Server-Side Local Session)
+$crossSite = getenv('CROSS_SITE') === '1';
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',
+    'secure'   => $crossSite,
+    'httponly' => true,
+    'samesite' => $crossSite ? 'None' : 'Lax',
+]);
 session_start();
 
-// 2. Header agar response selalu JSON
 header('Content-Type: application/json; charset=utf-8');
 
-// 3. Header CORS agar fetch() dari file HTML bisa mengakses
-//    (diperlukan saat development lokal; di production bisa disesuaikan)
-header('Access-Control-Allow-Origin: ' . ($_SERVER['HTTP_ORIGIN'] ?? '*'));
-header('Access-Control-Allow-Credentials: true');
+// CORS: only allow listed origins (not "whatever origin sent the request")
+$allowed = array_map('trim', explode(',',
+    getenv('ALLOWED_ORIGINS') ?: 'http://localhost,http://127.0.0.1'));
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowed, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+
 
 // Tangani preflight OPTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -255,19 +268,14 @@ switch ($aksi) {
 
         try {
             $stmt = $pdo->prepare(
-                'SELECT p.id, p.judul, p.tgl_submit, p.kategori, p.keyword, p.gambar, u.nama AS penulis
+                'SELECT p.id, p.judul, p.tgl_submit, p.kategori, p.keyword,
+                        p.gambar AS file_gambar, u.nama AS penulis
                  FROM puisi p
                  INNER JOIN users u ON p.user_id = u.id
                  ORDER BY p.tgl_submit DESC'
             );
             $stmt->execute();
             $daftarPuisi = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $base = getenv('IMAGE_BASE_URL') ?: 'https://YOUR-CLOUDFRONT-DOMAIN/';
-            foreach ($daftarPuisi as &$row) {
-                $row['url_gambar'] = $row['gambar'] ? $base . $row['gambar'] : null;
-            }
-            unset($row);
 
             kirimRespon('sukses', 'Daftar puisi berhasil dimuat.', $daftarPuisi);
 
