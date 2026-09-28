@@ -11,6 +11,55 @@ Sistem ini didesain sebagai _ground truth_ atau _baseline_ untuk memahami fundam
 4. **Single-Path Routing:** Seluruh logika backend ditangani melalui satu pintu masuk utama (`server.php?aksi=...`).
 5. **Observasi Jaringan (Cookie):** Menggunakan `fetch()` API Vanilla JS dengan opsi `credentials: 'include'` untuk memastikan transmisi `PHPSESSID` melalui Header Cookie terjadi dengan lancar.
 
+## Fitur Gambar Puisi (Hands-on Minggu 5)
+
+Setiap puisi kini memiliki gambar kutipan yang dirender oleh microservice di AWS Lambda dan
+dilayani lewat CloudFront.
+
+- **Form submit** memiliki kolom *bait kutipan*, pilihan template latar, dan **preview yang
+  berubah otomatis** setiap kali judul, bait, atau template diubah.
+- **Submit berjalan dua langkah.** Frontend memanggil `action=save` agar microservice merender
+  dan mengunggah gambar ke S3, lalu nama file yang dikembalikan dikirim bersama metadata puisi
+  ke `server.php`.
+- **Daftar puisi tampil sebagai galeri gambar**, lengkap dengan tautan unduh, bukan tabel teks.
+
+### Konfigurasi Endpoint
+
+Semua alamat dikumpulkan pada objek `KONFIG` di bagian atas `script.js`.
+
+| Kunci | Arti | Contoh saat produksi |
+|---|---|---|
+| `backend` | lokasi `server.php` di EC2 | `http://<IP_PUBLIK>/server.php` |
+| `cdn` | basis URL CloudFront. Kosongkan bila halaman ini sudah dilayani CloudFront | `https://<id>.cloudfront.net` |
+| `pathGambar` | path behavior microservice | `/fungsi` |
+| `template` | daftar file latar di bucket S3 | `latar1`, `latar2`, `latar3`, `latar5` |
+| `jedaPreview` | jeda sebelum preview dimuat ulang, dalam milidetik | `600` |
+
+Berkas latar berasal dari dosen dan diunggah ke root bucket S3 oleh bagian infrastruktur,
+sehingga thumbnail template maupun gambar hasil render diambil dari domain CloudFront yang sama.
+
+### Kontrak dengan Microservice Gambar
+
+```
+/fungsi?action=preview&template=latar1.jpeg&judul=...&penulis=...&kutipan=...
+/fungsi?action=save&template=latar1.jpeg&judul=...&penulis=...&kutipan=...
+```
+
+`preview` mengembalikan JPEG biner untuk tag `<img>`, sedangkan `save` mengunggah gambar ke S3
+lalu mengembalikan `{"status":"sukses","file_gambar":"puisi_xxx.jpeg"}`. Seluruh nilai teks
+dikirim melalui `encodeURIComponent`.
+
+### Yang Dibutuhkan dari Backend dan Database
+
+Frontend sudah mengirim dan membaca field `file_gambar`, sehingga sisi backend perlu:
+
+1. Kolom baru pada tabel puisi: `ALTER TABLE puisi ADD COLUMN file_gambar VARCHAR(255) NOT NULL;`
+2. Aksi `submit_puisi` menyimpan `file_gambar` dari body JSON.
+3. Aksi `daftar_puisi` menyertakan `file_gambar` pada hasil query.
+
+Selama ketiganya belum ada, galeri tetap tampil dengan kartu bertanda "Gambar belum tersedia",
+jadi aplikasi tidak rusak saat integrasi dilakukan bertahap.
+
 ## Teknologi yang Digunakan
 - **Backend:** PHP Murni (Tanpa Framework)
 - **Database:** MySQL
