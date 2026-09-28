@@ -75,6 +75,32 @@ function urlAset(namaFile) {
     return KONFIG.cdn + '/' + namaFile;
 }
 
+// Ikon garis ditanam langsung, bukan diambil dari CDN ikon,
+// supaya dokumen statis di S3 tidak bergantung pada sumber luar
+var JALUR_IKON = {
+    unduh: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5 5 5-5', 'M12 15V3']
+};
+
+function bangunIkon(nama) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'ikon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+
+    var jalur = JALUR_IKON[nama];
+    for (var i = 0; i < jalur.length; i++) {
+        var path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', jalur[i]);
+        svg.appendChild(path);
+    }
+    return svg;
+}
 
 function templateTerpilih() {
     var terpilih = document.querySelector('input[name="template"]:checked');
@@ -282,8 +308,8 @@ function logout() {
         .then(function (data) {
             tampilkanPesan(data.pesan, 'sukses');
             tampilkanAreaLogin();
-            // Kosongkan tabel puisi
-            document.getElementById('tbody-puisi').innerHTML = '';
+            // Kosongkan galeri puisi
+            document.getElementById('galeri-puisi').innerHTML = '';
         })
         .catch(function (err) {
             tampilkanPesan('Gagal logout: ' + err.message, 'error');
@@ -381,49 +407,75 @@ function muatDaftarPuisi() {
     })
         .then(function (res) { return res.json(); })
         .then(function (data) {
-            var tbody = document.getElementById('tbody-puisi');
-            tbody.innerHTML = '';
+            var galeri = document.getElementById('galeri-puisi');
+            galeri.innerHTML = '';
 
-            if (data.status === 'sukses' && data.data && data.data.length > 0) {
-                for (var i = 0; i < data.data.length; i++) {
-                    var p = data.data[i];
-                    var tr = document.createElement('tr');
-
-                    var tdNo = document.createElement('td');
-                    tdNo.textContent = i + 1;
-
-                    var tdTgl = document.createElement('td');
-                    tdTgl.textContent = p.tgl_submit;
-
-                    var tdJudul = document.createElement('td');
-                    tdJudul.textContent = p.judul;
-
-                    var tdKat = document.createElement('td');
-                    tdKat.textContent = p.kategori;
-
-                    var tdPenulis = document.createElement('td');
-                    tdPenulis.textContent = p.penulis;
-
-                    tr.appendChild(tdNo);
-                    tr.appendChild(tdTgl);
-                    tr.appendChild(tdJudul);
-                    tr.appendChild(tdKat);
-                    tr.appendChild(tdPenulis);
-
-                    tbody.appendChild(tr);
-                }
-            } else if (data.status === 'sukses') {
-                var tr = document.createElement('tr');
-                var td = document.createElement('td');
-                td.colSpan = 5;
-                td.textContent = 'Belum ada puisi.';
-                tr.appendChild(td);
-                tbody.appendChild(tr);
-            } else {
+            if (data.status !== 'sukses') {
                 tampilkanPesan(data.pesan, 'error');
+                return;
+            }
+
+            if (!data.data || data.data.length === 0) {
+                var kosong = document.createElement('p');
+                kosong.className = 'galeri-kosong';
+                kosong.textContent = 'Belum ada puisi.';
+                galeri.appendChild(kosong);
+                return;
+            }
+
+            for (var i = 0; i < data.data.length; i++) {
+                galeri.appendChild(bangunKartuPuisi(data.data[i]));
             }
         })
         .catch(function (err) {
             tampilkanPesan('Gagal memuat daftar puisi: ' + err.message, 'error');
         });
+}
+
+function bangunKartuPuisi(puisi) {
+    var kartu = document.createElement('article');
+    kartu.className = 'kartu-puisi';
+
+    if (puisi.file_gambar) {
+        var gambar = document.createElement('img');
+        gambar.src = urlAset(puisi.file_gambar);
+        gambar.alt = 'Gambar puisi ' + puisi.judul;
+        gambar.loading = 'lazy';
+        gambar.addEventListener('error', function () {
+            var pengganti = document.createElement('div');
+            pengganti.className = 'kartu-tanpa-gambar';
+            pengganti.textContent = 'Gambar gagal dimuat';
+            kartu.replaceChild(pengganti, gambar);
+        });
+        kartu.appendChild(gambar);
+    } else {
+        // backend lama belum mengirim file_gambar, kartu tetap tampil
+        var tanpaGambar = document.createElement('div');
+        tanpaGambar.className = 'kartu-tanpa-gambar';
+        tanpaGambar.textContent = 'Gambar belum tersedia';
+        kartu.appendChild(tanpaGambar);
+    }
+
+    var isi = document.createElement('div');
+    isi.className = 'kartu-isi';
+
+    // judul dan penulis sudah tercetak di dalam gambar, jadi tidak diulang sebagai teks
+    var meta = document.createElement('p');
+    meta.className = 'kartu-meta';
+    meta.textContent = puisi.tgl_submit + ' | ' + puisi.kategori;
+
+    isi.appendChild(meta);
+
+    if (puisi.file_gambar) {
+        var unduh = document.createElement('a');
+        unduh.className = 'btn-unduh';
+        unduh.href = urlAset(puisi.file_gambar);
+        unduh.setAttribute('download', '');
+        unduh.appendChild(bangunIkon('unduh'));
+        unduh.appendChild(document.createTextNode('Unduh Gambar'));
+        isi.appendChild(unduh);
+    }
+
+    kartu.appendChild(isi);
+    return kartu;
 }
