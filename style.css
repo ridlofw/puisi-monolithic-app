@@ -15,6 +15,10 @@ body {
     background-color: #f8f9fa;
     color: #333333;
     line-height: 1.5;
+    /* Pola latar bertema tulis-menulis. SVG ditanam sebagai data URI
+       supaya halaman statis di S3 tidak bergantung pada sumber luar */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='168' height='168' viewBox='0 0 168 168' fill='none' stroke='%234a5568' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' opacity='0.045'%3E%3Cg transform='translate(8 16) rotate(-20) scale(1.1)'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/g%3E%3Cg transform='translate(92 6) rotate(14)'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3Cpath d='M9 13h6'/%3E%3Cpath d='M9 17h6'/%3E%3C/g%3E%3Cg transform='translate(138 54) rotate(-10) scale(0.95)'%3E%3Cpath d='M12 2.7l5.7 5.6a8 8 0 1 1-11.4 0Z'/%3E%3C/g%3E%3Cg transform='translate(16 84) rotate(10) scale(1.05)'%3E%3Cpath d='M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2Z'/%3E%3Cpath d='M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22Z'/%3E%3C/g%3E%3Cg transform='translate(94 92) rotate(-24) scale(1.05)'%3E%3Cpath d='M20 12a6 6 0 0 0-8.5-8.5L5 10v9h9Z'/%3E%3Cpath d='M16 8 3 21'/%3E%3Cpath d='M17 15H9'/%3E%3C/g%3E%3Cg transform='translate(140 124) rotate(35) scale(0.9)'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 168px 168px;
 }
 
 .container {
@@ -184,6 +188,9 @@ textarea {
    TOMBOL
    -------------------------------------------- */
 button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 16px;
     border: 1px solid #cbd5e0;
     border-radius: 4px;
@@ -198,6 +205,24 @@ button:hover {
     background-color: #e2e8f0;
 }
 
+/* Ikon garis satu warna, mengikuti warna teks tombolnya */
+.ikon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+#btn-logout {
+    background-color: #e53e3e;
+    border-color: #e53e3e;
+    color: #ffffff;
+}
+
+#btn-logout:hover {
+    background-color: #c53030;
+    border-color: #c53030;
+}
+
 .btn-primary {
     background-color: #3182ce;
     border-color: #3182ce;
@@ -209,31 +234,155 @@ button:hover {
 }
 
 /* --------------------------------------------
-   TABEL DAFTAR PUISI
+   TEMPLATE & PREVIEW GAMBAR PUISI
    -------------------------------------------- */
-.table-container {
-    overflow-x: auto;
+.area-gambar {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 8px;
-    font-size: 14px;
+.kolom-template {
+    flex: 1 1 260px;
+    display: flex;
+    flex-direction: column;
 }
 
-th, td {
-    border: 1px solid #e2e8f0;
-    padding: 10px 12px;
-    text-align: left;
+.kolom-preview {
+    flex: 1 1 300px;
+    display: flex;
+    flex-direction: column;
 }
 
-th {
-    background-color: #f7fafc;
+.daftar-template {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.template-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 12px;
     color: #4a5568;
-    font-weight: 600;
 }
 
-tr:nth-child(even) {
-    background-color: #fcfdfd;
+.template-item input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.template-item img {
+    width: 84px;
+    height: 56px;
+    object-fit: cover;
+    border: 2px solid #e2e8f0;
+    border-radius: 4px;
+    background-color: #f7fafc;
+}
+
+.template-item input:checked + img {
+    border-color: #3182ce;
+}
+
+.template-item input:focus + img {
+    border-color: #4299e1;
+}
+
+.kotak-preview {
+    border: 1px dashed #cbd5e0;
+    border-radius: 4px;
+    padding: 12px;
+    background-color: #f7fafc;
+    text-align: center;
+}
+
+.kotak-preview img {
+    max-width: 100%;
+    border-radius: 4px;
+}
+
+.status-preview {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #718096;
+}
+
+/* --------------------------------------------
+   GALERI DAFTAR PUISI
+   -------------------------------------------- */
+.galeri {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.galeri-kosong {
+    color: #718096;
+    font-size: 14px;
+    margin: 4px 0;
+}
+
+.kartu-puisi {
+    flex: 1 1 260px;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.kartu-puisi img {
+    width: 100%;
+    display: block;
+    background-color: #f7fafc;
+}
+
+.kartu-tanpa-gambar {
+    padding: 40px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: #a0aec0;
+    background-color: #f7fafc;
+}
+
+.kartu-isi {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kartu-meta {
+    margin: 0;
+    font-size: 12px;
+    color: #718096;
+}
+
+.btn-unduh {
+    margin-top: 8px;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    background-color: #edf2f7;
+    color: #2d3748;
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.btn-unduh:hover {
+    background-color: #e2e8f0;
 }
