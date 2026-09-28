@@ -7,7 +7,7 @@
 $db_host = 'localhost';
 $db_name = 'puisi_db';
 $db_user = 'root';
-$db_pass = 'root';
+$db_pass = '';
 
 try {
     $pdo = new PDO(

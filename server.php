@@ -198,7 +198,6 @@ switch ($aksi) {
             kirimRespon('error', 'Method tidak diizinkan. Gunakan POST.');
         }
 
-        // Cek session terlebih dahulu
         cekLogin();
 
         $input = bacaInputJSON();
@@ -208,16 +207,22 @@ switch ($aksi) {
         $tgl_submit = trim($input['tgl_submit'] ?? date('Y-m-d'));
         $kategori   = trim($input['kategori'] ?? '');
         $keyword    = trim($input['keyword'] ?? '');
+        $gambar     = trim($input['file_gambar'] ?? '');
 
         if ($judul === '' || $isi === '' || $kategori === '' || $keyword === '') {
             http_response_code(400);
             kirimRespon('error', 'Semua field puisi wajib diisi (judul, isi, kategori, keyword).');
         }
 
+        if (!preg_match('/^puisi_\d{10,16}\.jpeg$/', $gambar)) {
+            http_response_code(400);
+            kirimRespon('error', 'File gambar puisi tidak valid.');
+        }
+
         try {
             $stmt = $pdo->prepare(
-                'INSERT INTO puisi (user_id, judul, tgl_submit, isi, kategori, keyword)
-                 VALUES (:user_id, :judul, :tgl_submit, :isi, :kategori, :keyword)'
+                'INSERT INTO puisi (user_id, judul, tgl_submit, isi, kategori, keyword, gambar)
+                 VALUES (:user_id, :judul, :tgl_submit, :isi, :kategori, :keyword, :gambar)'
             );
             $stmt->execute([
                 ':user_id'    => $_SESSION['user_id'],
@@ -225,7 +230,8 @@ switch ($aksi) {
                 ':tgl_submit' => $tgl_submit,
                 ':isi'        => $isi,
                 ':kategori'   => $kategori,
-                ':keyword'    => $keyword
+                ':keyword'    => $keyword,
+                ':gambar'     => $gambar
             ]);
 
             kirimRespon('sukses', 'Puisi berhasil disimpan.');
@@ -245,18 +251,23 @@ switch ($aksi) {
             kirimRespon('error', 'Method tidak diizinkan. Gunakan GET.');
         }
 
-        // Cek session terlebih dahulu
         cekLogin();
 
         try {
             $stmt = $pdo->prepare(
-                'SELECT p.id, p.judul, p.tgl_submit, p.isi, p.kategori, p.keyword, u.nama AS penulis
+                'SELECT p.id, p.judul, p.tgl_submit, p.kategori, p.keyword, p.gambar, u.nama AS penulis
                  FROM puisi p
                  INNER JOIN users u ON p.user_id = u.id
                  ORDER BY p.tgl_submit DESC'
             );
             $stmt->execute();
             $daftarPuisi = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $base = getenv('IMAGE_BASE_URL') ?: 'https://YOUR-CLOUDFRONT-DOMAIN/';
+            foreach ($daftarPuisi as &$row) {
+                $row['url_gambar'] = $row['gambar'] ? $base . $row['gambar'] : null;
+            }
+            unset($row);
 
             kirimRespon('sukses', 'Daftar puisi berhasil dimuat.', $daftarPuisi);
 

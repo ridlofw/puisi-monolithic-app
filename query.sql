@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS puisi (
     isi        TEXT         NOT NULL,
     kategori   VARCHAR(100) NOT NULL,
     keyword    VARCHAR(255) NOT NULL,
+    gambar     VARCHAR(255) NOT NULL,
     CONSTRAINT fk_puisi_user
         FOREIGN KEY (user_id) REFERENCES users(id)
         ON DELETE CASCADE
