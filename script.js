@@ -302,19 +302,48 @@ function prosesSubmitPuisi(event) {
     var kategori = document.getElementById('puisi-kategori').value;
     var keyword = document.getElementById('puisi-keyword').value;
     var isi = document.getElementById('puisi-isi').value;
+    var kutipan = document.getElementById('puisi-kutipan').value.trim();
 
-    fetch(BASE_URL + '?aksi=submit_puisi', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            judul: judul,
-            tgl_submit: tgl_submit,
-            isi: isi,
-            kategori: kategori,
-            keyword: keyword
+    if (kutipan === '') {
+        tampilkanPesan('Bait kutipan wajib diisi karena dicetak di gambar puisi.', 'error');
+        return false;
+    }
+
+    var tombol = document.getElementById('btn-kirim-puisi');
+    tombol.disabled = true;
+    tombol.textContent = 'Menyimpan gambar...';
+
+    // Langkah 1: microservice merender gambar lalu mengunggahnya ke bucket S3
+    fetch(urlGambar('save', {
+        template: templateTerpilih(),
+        judul: judul,
+        penulis: namaPengguna,
+        kutipan: kutipan
+    }))
+        .then(function (res) { return res.json(); })
+        .then(function (hasilGambar) {
+            if (!hasilGambar || hasilGambar.status !== 'sukses' || !hasilGambar.file_gambar) {
+                throw new Error('Microservice gambar tidak mengembalikan nama file.');
+            }
+
+            // Langkah 2: metadata puisi dan nama file gambar dikirim ke backend di EC2
+            tombol.textContent = 'Menyimpan puisi...';
+            return fetch(BASE_URL + '?aksi=submit_puisi', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                // field mengikuti daftar di penugasan, bait kutipan tidak ikut
+                // karena hanya dipakai untuk merender gambar
+                body: JSON.stringify({
+                    judul: judul,
+                    tgl_submit: tgl_submit,
+                    isi: isi,
+                    kategori: kategori,
+                    keyword: keyword,
+                    file_gambar: hasilGambar.file_gambar
+                })
+            });
         })
-    })
         .then(function (res) { return res.json(); })
         .then(function (data) {
             if (data.status === 'sukses') {
@@ -322,6 +351,8 @@ function prosesSubmitPuisi(event) {
                 document.getElementById('form-puisi').reset();
                 // Reset tanggal ke hari ini
                 document.getElementById('puisi-tgl').value = new Date().toISOString().split('T')[0];
+                // Kosongkan kembali preview
+                perbaruiPreview();
                 // Muat ulang daftar puisi
                 muatDaftarPuisi();
             } else {
@@ -330,6 +361,10 @@ function prosesSubmitPuisi(event) {
         })
         .catch(function (err) {
             tampilkanPesan('Gagal mengirim puisi: ' + err.message, 'error');
+        })
+        .then(function () {
+            tombol.disabled = false;
+            tombol.textContent = 'Kirim Puisi';
         });
 
     return false;
