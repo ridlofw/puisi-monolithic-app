@@ -209,6 +209,87 @@ button:hover {
 }
 
 /* --------------------------------------------
+   TEMPLATE & PREVIEW GAMBAR PUISI
+   -------------------------------------------- */
+.area-gambar {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.kolom-template {
+    flex: 1 1 260px;
+    display: flex;
+    flex-direction: column;
+}
+
+.kolom-preview {
+    flex: 1 1 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.daftar-template {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.template-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #4a5568;
+}
+
+.template-item input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.template-item img {
+    width: 84px;
+    height: 56px;
+    object-fit: cover;
+    border: 2px solid #e2e8f0;
+    border-radius: 4px;
+    background-color: #f7fafc;
+}
+
+.template-item input:checked + img {
+    border-color: #3182ce;
+}
+
+.template-item input:focus + img {
+    border-color: #4299e1;
+}
+
+.kotak-preview {
+    border: 1px dashed #cbd5e0;
+    border-radius: 4px;
+    padding: 12px;
+    background-color: #f7fafc;
+    text-align: center;
+}
+
+.kotak-preview img {
+    max-width: 100%;
+    border-radius: 4px;
+}
+
+.status-preview {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #718096;
+}
+
+/* --------------------------------------------
    TABEL DAFTAR PUISI
    -------------------------------------------- */
 .table-container {

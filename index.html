@@ -99,7 +99,27 @@
                         <label for="puisi-isi">Isi Puisi</label>
                         <textarea id="puisi-isi" name="isi" rows="6" required></textarea>
                     </div>
-                    <button type="submit" class="btn-primary">Kirim Puisi</button>
+                    <div class="form-group">
+                        <label for="puisi-kutipan">Bait Kutipan (tampil di gambar)</label>
+                        <textarea id="puisi-kutipan" name="kutipan" rows="3" required
+                            placeholder="Penggalan bait yang dicetak di gambar puisi"></textarea>
+                    </div>
+
+                    <div class="area-gambar">
+                        <div class="kolom-template">
+                            <label>Template Gambar</label>
+                            <div id="pilihan-template" class="daftar-template"></div>
+                        </div>
+                        <div class="kolom-preview">
+                            <label>Preview Gambar Puisi</label>
+                            <div class="kotak-preview">
+                                <img id="preview-gambar" alt="Preview gambar puisi" style="display:none;">
+                                <p id="status-preview" class="status-preview">Isi judul dan bait kutipan untuk melihat preview.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="btn-kirim-puisi">Kirim Puisi</button>
                 </form>
             </section>
 

@@ -4,9 +4,33 @@
 // Semua fetch() menyertakan credentials: 'include'
 // ============================================
 
-// Base URL backend — sesuaikan dengan lokasi server.php
-// Saat di EC2, gunakan: 'http://<IP_PUBLIK>/server.php'
-var BASE_URL = 'server.php';
+// Konfigurasi endpoint. Ubah di sini saja saat pindah lingkungan.
+var KONFIG = {
+    // Backend PHP di EC2. Saat frontend dilayani dari S3/CloudFront,
+    // isi dengan alamat publik EC2, misal 'http://<IP_PUBLIK>/server.php'
+    backend: 'server.php',
+
+    // Basis URL CDN. Kosong berarti satu origin dengan halaman ini,
+    // yaitu saat frontend sudah dilayani lewat CloudFront
+    cdn: '',
+
+    // Path microservice gambar di belakang CloudFront (behavior /fungsi*)
+    pathGambar: '/fungsi',
+
+    // Template latar yang dibagikan dosen. Penomorannya memang melompati latar4
+    template: ['latar1.jpeg', 'latar2.jpeg', 'latar3.jpeg', 'latar5.jpeg'],
+
+    // Jeda sebelum preview dimuat ulang, supaya tiap ketikan tidak memanggil Lambda
+    jedaPreview: 600
+};
+
+var BASE_URL = KONFIG.backend;
+
+// Nama penulis yang dicetak di gambar, diisi setelah login
+var namaPengguna = '';
+
+// Timer debounce preview
+var timerPreview = null;
 
 // ============================================
 // UTILITAS
@@ -26,10 +50,101 @@ function tampilkanAreaLogin() {
 }
 
 function tampilkanAreaPuisi(nama) {
+    namaPengguna = nama;
     document.getElementById('area-auth').style.display = 'none';
     document.getElementById('area-puisi').style.display = 'block';
     document.getElementById('btn-logout').style.display = 'inline-block';
     document.getElementById('info-user').textContent = 'Login sebagai: ' + nama;
+}
+
+// ============================================
+// GAMBAR PUISI (MICROSERVICE LAMBDA VIA CDN)
+// ============================================
+
+function urlGambar(aksi, parameter) {
+    var query = 'action=' + encodeURIComponent(aksi);
+    for (var kunci in parameter) {
+        if (parameter.hasOwnProperty(kunci)) {
+            query += '&' + kunci + '=' + encodeURIComponent(parameter[kunci]);
+        }
+    }
+    return KONFIG.cdn + KONFIG.pathGambar + '?' + query;
+}
+
+function urlAset(namaFile) {
+    return KONFIG.cdn + '/' + namaFile;
+}
+
+
+function templateTerpilih() {
+    var terpilih = document.querySelector('input[name="template"]:checked');
+    return terpilih ? terpilih.value : KONFIG.template[0];
+}
+
+function bangunPilihanTemplate() {
+    var wadah = document.getElementById('pilihan-template');
+    if (!wadah) {
+        return;
+    }
+    wadah.innerHTML = '';
+
+    for (var i = 0; i < KONFIG.template.length; i++) {
+        var namaFile = KONFIG.template[i];
+
+        var item = document.createElement('label');
+        item.className = 'template-item';
+
+        var radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'template';
+        radio.value = namaFile;
+        // pakai atribut supaya pilihan pertama kembali aktif setelah form di-reset
+        if (i === 0) {
+            radio.setAttribute('checked', 'checked');
+        }
+        radio.addEventListener('change', perbaruiPreview);
+
+        var gambar = document.createElement('img');
+        gambar.src = urlAset(namaFile);
+        gambar.alt = 'Template ' + (i + 1);
+
+        var keterangan = document.createElement('span');
+        keterangan.textContent = 'Template ' + (i + 1);
+
+        item.appendChild(radio);
+        item.appendChild(gambar);
+        item.appendChild(keterangan);
+        wadah.appendChild(item);
+    }
+}
+
+// Preview ditunda sebentar supaya tiap ketikan tidak memanggil Lambda
+function jadwalkanPreview() {
+    clearTimeout(timerPreview);
+    timerPreview = setTimeout(perbaruiPreview, KONFIG.jedaPreview);
+}
+
+function perbaruiPreview() {
+    var judul = document.getElementById('puisi-judul').value.trim();
+    var kutipan = document.getElementById('puisi-kutipan').value.trim();
+    var gambar = document.getElementById('preview-gambar');
+    var status = document.getElementById('status-preview');
+
+    if (judul === '' || kutipan === '') {
+        gambar.style.display = 'none';
+        gambar.removeAttribute('src');
+        status.textContent = 'Isi judul dan bait kutipan untuk melihat preview.';
+        return;
+    }
+
+    status.textContent = 'Memuat preview...';
+    gambar.style.display = 'block';
+    gambar.src = urlGambar('preview', {
+        template: templateTerpilih(),
+        judul: judul,
+        penulis: namaPengguna,
+        kutipan: kutipan
+    });
 }
 
 // ============================================
@@ -42,6 +157,22 @@ window.addEventListener('DOMContentLoaded', function () {
     if (elTgl) {
         elTgl.value = new Date().toISOString().split('T')[0];
     }
+
+    // Siapkan pilihan template dan pemicu preview
+    bangunPilihanTemplate();
+    document.getElementById('puisi-judul').addEventListener('input', jadwalkanPreview);
+    document.getElementById('puisi-kutipan').addEventListener('input', jadwalkanPreview);
+
+    var elPreview = document.getElementById('preview-gambar');
+    elPreview.addEventListener('load', function () {
+        document.getElementById('status-preview').textContent =
+            'Preview dari template ' + templateTerpilih() + '.';
+    });
+    elPreview.addEventListener('error', function () {
+        elPreview.style.display = 'none';
+        document.getElementById('status-preview').textContent =
+            'Gagal memuat preview. Periksa konfigurasi CDN atau microservice gambar.';
+    });
 
     // Cek apakah session masih aktif
     fetch(BASE_URL + '?aksi=cek_session', {
