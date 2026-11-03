@@ -1,0 +1,13 @@
+{
+  "puisi_id": 1,
+  "sumber": "analisis-emosi",
+  "hasil": {
+    "sentimen": {
+      "skor": 0.42,
+      "label": "positif"
+    },
+    "emosi_dominan_per_bait": [
+      "percaya"
+    ]
+  }
+}

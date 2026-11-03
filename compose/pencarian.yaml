@@ -1,0 +1,3 @@
+# search-service dan OpenSearch. Pemilik: Evan
+# setiap service diberi profiles: ["pencarian", "semua"], lihat kontrak/README.md
+services: {}

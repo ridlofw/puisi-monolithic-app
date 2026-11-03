@@ -1,0 +1,3 @@
+# Prometheus, Alertmanager, Grafana, Loki, dan exporter. Pemilik: Ray
+# setiap service diberi profiles: ["observability", "semua"], lihat kontrak/README.md
+services: {}

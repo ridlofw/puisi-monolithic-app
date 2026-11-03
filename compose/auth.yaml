@@ -1,0 +1,3 @@
+# auth-service dan auth-db. Pemilik: Ifham
+# setiap service diberi profiles: ["auth", "semua"], lihat kontrak/README.md
+services: {}

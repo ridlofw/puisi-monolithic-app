@@ -1,0 +1,3 @@
+# worker Klasifikasi Genre. Pemilik: Ridlo
+# setiap service diberi profiles: ["genre", "semua"], lihat kontrak/README.md
+services: {}

@@ -1,0 +1,3 @@
+# worker Text-to-Speech, tts-db, dan object storage S3. Pemilik: Ifham
+# setiap service diberi profiles: ["tts", "semua"], lihat kontrak/README.md
+services: {}

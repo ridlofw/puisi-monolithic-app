@@ -1,0 +1,3 @@
+# worker Auto-tagging. Pemilik: Pison
+# setiap service diberi profiles: ["auto-tagging", "semua"], lihat kontrak/README.md
+services: {}

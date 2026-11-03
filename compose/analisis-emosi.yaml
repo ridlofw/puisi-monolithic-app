@@ -1,0 +1,3 @@
+# worker Analisis Emosi. Pemilik: Ray
+# setiap service diberi profiles: ["emosi", "semua"], lihat kontrak/README.md
+services: {}

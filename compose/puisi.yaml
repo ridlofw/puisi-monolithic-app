@@ -1,0 +1,3 @@
+# poem-service, poem-relay, poem-db, dan replikanya. Pemilik: Ridlo
+# setiap service diberi profiles: ["puisi", "semua"], lihat kontrak/README.md
+services: {}
