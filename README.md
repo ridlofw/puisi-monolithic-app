@@ -1,42 +1,109 @@
-# Aplikasi Puisi — Monolitik Stateful
+# Aplikasi Puisi
 
-Proyek ini adalah implementasi sistem **Monolitik Stateful** sederhana yang dibangun untuk memenuhi Penugasan Terstruktur pada mata kuliah **Pengembangan Perangkat Lunak Scalable**. 
+Platform publikasi puisi untuk mata kuliah **Pengembangan Perangkat Lunak Scalable**. Satu aplikasi
+yang berevolusi sepanjang semester:
 
-Sistem ini didesain sebagai _ground truth_ atau _baseline_ untuk memahami fundamental arsitektur sistem, secara khusus mendemonstrasikan bagaimana aplikasi menyimpan _state_ (sesi pengguna) secara lokal pada server.
+| Tahap | Arsitektur | Lokasi |
+|---|---|---|
+| Tugas 1 | monolit stateful, PHP dan MySQL, sesi di RAM server | `legacy/` |
+| Hands-on Minggu 5 | microservice gambar di AWS Lambda di belakang CloudFront | `lambda/` |
+| Hands-on Arsitektur | microservice dan event-driven: gateway Nginx, RabbitMQ tiga node, Redis, layanan per fitur | seluruh repositori |
 
-## Fitur Utama
-1. **Registrasi Akun:** Pendaftaran pengguna baru dengan penyimpanan password yang di-hash (PHP `password_hash`).
-2. **Autentikasi (Login/Logout):** Pengelolaan sesi lokal menggunakan eksekusi `session_start()` di PHP.
-3. **Manajemen Puisi:** Pengguna yang sudah login dapat membagikan puisi.
-4. **Single-Path Routing:** Seluruh logika backend ditangani melalui satu pintu masuk utama (`server.php?aksi=...`).
-5. **Observasi Jaringan (Cookie):** Menggunakan `fetch()` API Vanilla JS dengan opsi `credentials: 'include'` untuk memastikan transmisi `PHPSESSID` melalui Header Cookie terjadi dengan lancar.
+## Arsitektur
+
+```
+browser -> gateway Nginx (proxy_cache) -> auth-service    -> auth-db
+                                       -> poem-service    -> poem-db + replika, Redis
+                                       -> search-service  -> OpenSearch, Redis
+poem-service --outbox--> RabbitMQ (puisi.events, 3 node)
+          -> Auto-tagging, Klasifikasi Genre, Text-to-Speech, Analisis Emosi
+          -> puisi.dianalisis, audio.siap -> poem-service, search-service
+```
+
+Kontrak antarlayanan, yaitu rute API, JWT, bentuk event, queue, dan aturan Compose, ada di
+[`kontrak/README.md`](kontrak/README.md). Baca itu sebelum menulis layanan.
+
+| Komponen | Folder | Fragmen Compose | Pemilik |
+|---|---|---|---|
+| Gateway, RabbitMQ, Redis | `gateway/`, `rabbitmq/` | `compose/infra.yaml` | Pison |
+| Templat worker | [`workers/_templat/`](workers/_templat/README.md) | `compose/templat.yaml` | Pison |
+| auth-service | `services/auth/` | `compose/auth.yaml` | Ifham |
+| poem-service | `services/puisi/` | `compose/puisi.yaml` | Ridlo |
+| search-service | `services/pencarian/` | `compose/pencarian.yaml` | Evan |
+| Auto-tagging | `workers/auto-tagging/` | `compose/auto-tagging.yaml` | Pison |
+| Klasifikasi Genre | `workers/klasifikasi-genre/` | `compose/klasifikasi-genre.yaml` | Ridlo |
+| Text-to-Speech | `workers/text-to-speech/` | `compose/text-to-speech.yaml` | Ifham |
+| Analisis Emosi | `workers/analisis-emosi/` | `compose/analisis-emosi.yaml` | Ray |
+| Observability | `observability/` | `compose/observability.yaml` | Ray |
+| Frontend | `web/`, satu modul per area di `web/js/` | dilayani gateway | pemilik modul |
+
+## Menjalankan
+
+Butuh Docker Desktop dan Python 3 untuk script uji.
+
+```
+python scripts/siapkan_rahasia.py                 # sekali per mesin
+docker compose up -d                              # gateway, RabbitMQ tiga node, Redis
+docker compose --profile legacy up -d             # ditambah monolit Tugas 1 di /legacy/
+docker compose --profile auto-tagging up -d       # ditambah satu layanan, nama profile ada di kontrak
+docker compose --profile semua up -d              # semuanya
+```
+
+| Alamat | Isi |
+|---|---|
+| <http://localhost> | aplikasi |
+| <http://localhost:15672> | management RabbitMQ, pengguna `puisi`, sandi `puisi`. Node 2 dan 3 di 15673 dan 15674 |
+
+Selama layanan baru belum di-merge, frontend masih memakai monolit Tugas 1 lewat `KONFIG.backend` di
+`web/js/api.js`, jadi aplikasi tetap bisa dipakai dengan profile `legacy`.
+
+## Menguji
+
+```
+python scripts/status_antrian.py --node                               # klaster dan isi queue
+python scripts/kirim_event.py puisi.dibuat kontrak/contoh/pantun.json  # suntik event contoh
+python scripts/intip_event.py --tunggu 10                             # lihat event hasil
+python scripts/uji_e2e.py                                             # alur lengkap, LULUS atau BELUM
+```
+
+Yang sudah dibuktikan pada kerangka ini:
+
+| Uji | Hasil |
+|---|---|
+| Klaster RabbitMQ | tiga node berjalan, ke-13 quorum queue punya tiga anggota |
+| Pesan rusak | tepat tiga percobaan, lalu masuk `q.auto-tagging.dlq` dengan alasan `rejected` |
+| Satu node RabbitMQ dimatikan | event tetap diterima, worker pindah node, 4 dari 4 event diproses, tidak ada yang hilang |
+| Tiga replika worker, 30 event | terbagi 10, 10, 10 |
+| Vektor JWT | token dari Python dan PHP 8.3 identik byte demi byte |
+| Frontend setelah dipecah per modul | register, login, galeri, reload sesi, submit, logout lewat Chrome headless, tanpa error JavaScript |
 
 ## Fitur Gambar Puisi (Hands-on Minggu 5)
 
-Setiap puisi kini memiliki gambar kutipan yang dirender oleh microservice di AWS Lambda dan
-dilayani lewat CloudFront.
+Setiap puisi memiliki gambar kutipan yang dirender oleh microservice di AWS Lambda dan dilayani lewat
+CloudFront.
 
-- **Form submit** memiliki kolom *bait kutipan*, pilihan template latar, dan **preview yang
-  berubah otomatis** setiap kali judul, bait, atau template diubah.
-- **Submit berjalan dua langkah.** Frontend memanggil `action=save` agar microservice merender
-  dan mengunggah gambar ke S3, lalu nama file yang dikembalikan dikirim bersama metadata puisi
-  ke `server.php`.
+- **Form submit** memiliki kolom *bait kutipan*, pilihan template latar, dan **preview yang berubah
+  otomatis** setiap kali judul, bait, atau template diubah.
+- **Submit berjalan dua langkah.** Frontend memanggil `action=save` agar microservice merender dan
+  mengunggah gambar ke S3, lalu nama file yang dikembalikan dikirim bersama metadata puisi ke backend.
 - **Daftar puisi tampil sebagai galeri gambar**, lengkap dengan tautan unduh, bukan tabel teks.
 
 ### Konfigurasi Endpoint
 
-Semua alamat dikumpulkan pada objek `KONFIG` di bagian atas `script.js`.
+Semua alamat dikumpulkan pada objek `KONFIG` di `web/js/api.js`.
 
-| Kunci | Arti | Contoh saat produksi |
+| Kunci | Arti | Contoh |
 |---|---|---|
-| `backend` | lokasi `server.php` di EC2 | `http://<IP_PUBLIK>/server.php` |
+| `backend` | lokasi backend monolit | `/legacy/server.php` |
 | `cdn` | basis URL CloudFront. Kosongkan bila halaman ini sudah dilayani CloudFront | `https://<id>.cloudfront.net` |
 | `pathGambar` | path behavior microservice | `/fungsi` |
 | `template` | daftar file latar di bucket S3 | `latar1`, `latar2`, `latar3`, `latar5` |
 | `jedaPreview` | jeda sebelum preview dimuat ulang, dalam milidetik | `600` |
+| `kunciToken` | kunci `localStorage` untuk JWT | `puisi.token` |
 
-Berkas latar berasal dari dosen dan diunggah ke root bucket S3 oleh bagian infrastruktur,
-sehingga thumbnail template maupun gambar hasil render diambil dari domain CloudFront yang sama.
+Berkas latar berasal dari dosen dan diunggah ke root bucket S3, sehingga thumbnail template maupun
+gambar hasil render diambil dari domain CloudFront yang sama. Tanpa CDN, preview dan submit gagal
+dengan pesan yang jelas.
 
 ### Kontrak dengan Microservice Gambar
 
@@ -45,52 +112,17 @@ sehingga thumbnail template maupun gambar hasil render diambil dari domain Cloud
 /fungsi?action=save&template=latar1.jpeg&judul=...&penulis=...&kutipan=...
 ```
 
-`preview` mengembalikan JPEG biner untuk tag `<img>`, sedangkan `save` mengunggah gambar ke S3
-lalu mengembalikan `{"status":"sukses","file_gambar":"puisi_xxx.jpeg"}`. Seluruh nilai teks
-dikirim melalui `encodeURIComponent`.
+`preview` mengembalikan JPEG biner untuk tag `<img>`, sedangkan `save` mengunggah gambar ke S3 lalu
+mengembalikan `{"status":"sukses","file_gambar":"puisi_xxx.jpeg"}`. Seluruh nilai teks dikirim
+melalui `encodeURIComponent`. Kode fungsinya ada di [`lambda/`](lambda/README.md).
 
-### Yang Dibutuhkan dari Backend dan Database
+## Monolit Tugas 1
 
-Frontend sudah mengirim dan membaca field `file_gambar`, sehingga sisi backend perlu:
+`legacy/` menyimpan backend asli tanpa perubahan sebagai pembanding: PHP murni tanpa framework, satu
+pintu `server.php?aksi=...`, sesi lokal `session_start()`, dan MySQL lewat PDO dengan skema
+`query.sql`. Profile `legacy` menjalankannya di container `php:8.3-apache` dan `mysql:8.4`, dilayani
+gateway di `/legacy/`.
 
-1. Kolom baru pada tabel puisi: `ALTER TABLE puisi ADD COLUMN file_gambar VARCHAR(255) NOT NULL;`
-2. Aksi `submit_puisi` menyimpan `file_gambar` dari body JSON.
-3. Aksi `daftar_puisi` menyertakan `file_gambar` pada hasil query.
-
-Selama ketiganya belum ada, galeri tetap tampil dengan kartu bertanda "Gambar belum tersedia",
-jadi aplikasi tidak rusak saat integrasi dilakukan bertahap.
-
-## Teknologi yang Digunakan
-- **Backend:** PHP Murni (Tanpa Framework)
-- **Database:** MySQL
-- **Frontend:** HTML5, CSS3 (Flexbox Murni), Vanilla JavaScript
-- **Konektor DB:** PHP Data Objects (PDO)
-
-## Struktur Direktori
-```text
-├── index.html       # Antarmuka utama aplikasi
-├── style.css        # Desain layout minimalis
-├── script.js        # Komunikasi Fetch API Client-Server
-├── koneksi.php      # Konfigurasi PDO MySQL
-├── server.php       # Controller utama (Single-Path Routing)
-└── query.sql        # Skema tabel database (users, puisi)
-```
-
-## Panduan Instalasi Lokal
-1. Pastikan Anda telah menginstal **XAMPP/MAMP/LAMP** atau web server sejenis dengan PHP dan MySQL.
-2. Clone repositori ini ke dalam folder root web server (misalnya: `htdocs/` atau `/var/www/html/`).
-3. Buka **phpMyAdmin** (atau terminal MySQL) dan jalankan seluruh isi file `query.sql` untuk membangun skema basis data (`puisi_db`).
-4. Sesuaikan kredensial koneksi di `koneksi.php` (username dan password database) apabila berbeda dari default.
-5. Buka browser dan akses aplikasi melalui `http://localhost/puisi-monolithic-app/index.html`.
-
-## Panduan Deployment ke AWS EC2 (t2.micro)
-1. Buat instance EC2 tipe **t2.micro** dengan OS Linux (misal: Ubuntu atau Amazon Linux).
-2. Konfigurasi **Security Group** untuk mengizinkan Inbound traffic pada port **80 (HTTP)** dan **22 (SSH)**.
-3. Hubungkan via SSH, lalu instal Apache, PHP, dan MySQL/MariaDB:
-   ```bash
-   sudo apt update
-   sudo apt install apache2 php libapache2-mod-php php-mysql mysql-server -y
-   ```
-4. Impor `query.sql` ke MySQL di instance EC2 tersebut.
-5. Clone/Copy seluruh file proyek ke direktori `/var/www/html/`.
-6. Akses IP Publik EC2 melalui web browser.
+Deployment aslinya ke AWS EC2 t2.micro: Security Group membuka port 80 dan 22, pasang
+`apache2 php libapache2-mod-php php-mysql mysql-server`, impor `query.sql`, salin `legacy/` ke
+`/var/www/html/legacy/` dan isi `web/` ke `/var/www/html/`, lalu buka IP publik instance.

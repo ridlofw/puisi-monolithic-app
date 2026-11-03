@@ -1,0 +1,70 @@
+# infrastruktur bersama, selalu menyala tanpa profile. Pemilik: Pison
+services:
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/proxy-umum.conf:/etc/nginx/proxy-umum.conf:ro
+      - ./gateway/rute:/etc/nginx/rute:ro
+      - ./web:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  rabbitmq-1: &rabbitmq
+    image: rabbitmq:4-management
+    hostname: rabbitmq-1
+    environment:
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_COOKIE:-puisi-cookie-lokal}
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq-1:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  rabbitmq-2:
+    <<: *rabbitmq
+    hostname: rabbitmq-2
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq-2:/var/lib/rabbitmq
+    ports:
+      - "15673:15672"
+
+  rabbitmq-3:
+    <<: *rabbitmq
+    hostname: rabbitmq-3
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq-3:/var/lib/rabbitmq
+    ports:
+      - "15674:15672"
+
+  redis:
+    image: redis:7-alpine
+    # cache murni, tanpa persistensi. Setiap layanan wajib tetap jalan saat redis mati
+    command: ["redis-server", "--save", "", "--appendonly", "no",
+              "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    restart: unless-stopped
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
+volumes:
+  rabbitmq-1:
+  rabbitmq-2:
+  rabbitmq-3:

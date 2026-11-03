@@ -1,0 +1,18 @@
+# worker contoh dari workers/_templat, dipakai untuk menguji broker, DLQ, dan observability.
+# jalankan dengan: docker compose --profile templat up
+services:
+  worker-templat:
+    build: ./workers/_templat
+    profiles: ["templat"]
+    restart: unless-stopped
+    environment:
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+      QUEUE: ${TEMPLAT_QUEUE:-q.auto-tagging}
+      NAMA_WORKER: templat
+      GAGAL_SENGAJA: ${TEMPLAT_GAGAL:-0}
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy

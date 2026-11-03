@@ -1,0 +1,25 @@
+# monolit Tugas 1 sebagai pembanding, dilayani gateway di /legacy/.
+# jalankan dengan: docker compose --profile legacy up
+services:
+  legacy-app:
+    build: ./legacy
+    profiles: ["legacy"]
+    environment:
+      DB_HOST: legacy-db
+      DB_PASS: legacy
+    depends_on:
+      legacy-db:
+        condition: service_healthy
+
+  legacy-db:
+    image: mysql:8.4
+    profiles: ["legacy"]
+    environment:
+      MYSQL_ROOT_PASSWORD: legacy
+    volumes:
+      - ./legacy/query.sql:/docker-entrypoint-initdb.d/query.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-plegacy"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

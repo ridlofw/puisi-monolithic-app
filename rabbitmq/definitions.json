@@ -1,0 +1,311 @@
+{
+  "rabbit_version": "4.1.0",
+  "users": [
+    {
+      "name": "puisi",
+      "password_hash": "WhwzB4WD6iZRqWo5gWmEH+XV4pPg4ZERI7GtbAniV4wfofSN",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "puisi",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "puisi.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "puisi.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "q.auto-tagging",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.auto-tagging.dlq"
+      }
+    },
+    {
+      "name": "q.auto-tagging.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.klasifikasi-genre",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.klasifikasi-genre.dlq"
+      }
+    },
+    {
+      "name": "q.klasifikasi-genre.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.text-to-speech",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.text-to-speech.dlq"
+      }
+    },
+    {
+      "name": "q.text-to-speech.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.analisis-emosi",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.analisis-emosi.dlq"
+      }
+    },
+    {
+      "name": "q.analisis-emosi.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.puisi-hasil",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.puisi-hasil.dlq"
+      }
+    },
+    {
+      "name": "q.puisi-hasil.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.pencarian-indeks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 3,
+        "x-dead-letter-exchange": "puisi.dlx",
+        "x-dead-letter-routing-key": "q.pencarian-indeks.dlq"
+      }
+    },
+    {
+      "name": "q.pencarian-indeks.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "q.tap",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-max-length": 1000,
+        "x-overflow": "drop-head"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.auto-tagging",
+      "destination_type": "queue",
+      "routing_key": "puisi.dibuat",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.auto-tagging.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.auto-tagging.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.klasifikasi-genre",
+      "destination_type": "queue",
+      "routing_key": "puisi.dibuat",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.klasifikasi-genre.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.klasifikasi-genre.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.text-to-speech",
+      "destination_type": "queue",
+      "routing_key": "puisi.dibuat",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.text-to-speech.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.text-to-speech.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.analisis-emosi",
+      "destination_type": "queue",
+      "routing_key": "puisi.dibuat",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.analisis-emosi.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.analisis-emosi.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.puisi-hasil",
+      "destination_type": "queue",
+      "routing_key": "puisi.dianalisis",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.puisi-hasil",
+      "destination_type": "queue",
+      "routing_key": "audio.siap",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.puisi-hasil.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.puisi-hasil.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.pencarian-indeks",
+      "destination_type": "queue",
+      "routing_key": "puisi.dibuat",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.pencarian-indeks",
+      "destination_type": "queue",
+      "routing_key": "puisi.dianalisis",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.dlx",
+      "vhost": "/",
+      "destination": "q.pencarian-indeks.dlq",
+      "destination_type": "queue",
+      "routing_key": "q.pencarian-indeks.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "puisi.events",
+      "vhost": "/",
+      "destination": "q.tap",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ],
+  "policies": [],
+  "parameters": [],
+  "global_parameters": []
+}

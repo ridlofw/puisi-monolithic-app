@@ -1,0 +1,13 @@
+# rahasia lokal, dibuat scripts/siapkan_rahasia.py
+secrets/
+.env
+
+__pycache__/
+*.pyc
+vendor/
+node_modules/
+
+# hasil Text-to-Speech dan model suara
+*.mp3
+*.wav
+*.onnx

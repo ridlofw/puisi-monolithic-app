@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# dibaca di dalam container Linux, harus tetap LF walau di-checkout di Windows
+*.conf text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.py   text eol=lf
+*.sh   text eol=lf
+*.sql  text eol=lf
+*.php  text eol=lf
+Dockerfile text eol=lf
+enabled_plugins text eol=lf
