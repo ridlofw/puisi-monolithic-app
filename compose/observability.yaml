@@ -1,3 +1,134 @@
 # Prometheus, Alertmanager, Grafana, Loki, dan exporter. Pemilik: Ray
 # setiap service diberi profiles: ["observability", "semua"], lihat kontrak/README.md
-services: {}
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: puisi-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: puisi-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager:/etc/alertmanager:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: puisi-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/puisi_overview.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: puisi-blackbox-exporter
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./observability/blackbox:/config:ro
+    command:
+      - "--config.file=/config/blackbox.yml"
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: puisi-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.1.0
+    container_name: puisi-nginx-exporter
+    command:
+      - "-nginx.scrape-uri=http://gateway/stub_status"
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: puisi-cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: puisi-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki:/etc/loki:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: puisi-promtail
+    volumes:
+      - ./observability/promtail:/etc/promtail:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail-config.yml
+    profiles:
+      - observability
+      - semua
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:

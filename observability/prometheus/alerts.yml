@@ -1,0 +1,47 @@
+groups:
+  - name: puisi_slo_alerts
+    rules:
+      - alert: AntrianMenumpuk
+        expr: rabbitmq_queue_messages_ready > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pesan menumpuk pada antrean {{ $labels.queue }}"
+          description: "Jumlah pesan siap pada antrean {{ $labels.queue }} melebihi 100 pesan selama lebih dari 2 menit (saat ini: {{ $value }})."
+
+      - alert: DLQTidakKosong
+        expr: rabbitmq_queue_messages{queue=~".*\\.dlq"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pesan masuk ke Dead Letter Queue {{ $labels.queue }}"
+          description: "Terdapat {{ $value }} pesan gagal yang dipindahkan ke dead letter queue {{ $labels.queue }}."
+
+      - alert: LayananTidakMenjawab
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Layanan endpoint {{ $labels.instance }} tidak menjawab"
+          description: "Blackbox probe ke {{ $labels.instance }} gagal merespons selama lebih dari 1 menit."
+
+      - alert: LatensiTinggi
+        expr: probe_duration_seconds > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latensi tinggi pada endpoint {{ $labels.instance }}"
+          description: "Latensi respons gateway pada {{ $labels.instance }} melebihi target SLO 500ms selama 5 menit berturut-turut (saat ini: {{ $value }}s)."
+
+      - alert: WorkerGagal
+        expr: (rate(worker_pesan_gagal_total[5m]) / (rate(worker_pesan_diproses_total[5m]) + rate(worker_pesan_gagal_total[5m]) > 0)) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rasio kegagalan worker {{ $labels.worker }} melebihi 10%"
+          description: "Worker {{ $labels.worker }} mengalami rasio kegagalan pesan lebih dari 10% dalam rentang 5 menit terakhir."
