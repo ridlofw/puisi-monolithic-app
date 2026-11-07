@@ -1,3 +1,18 @@
 # worker Analisis Emosi. Pemilik: Ray
 # setiap service diberi profiles: ["emosi", "semua"], lihat kontrak/README.md
-services: {}
+services:
+  analisis-emosi:
+    build:
+      context: ./workers/analisis-emosi
+    environment:
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+      QUEUE: q.analisis-emosi
+      NAMA_WORKER: analisis-emosi
+      PORT_METRIK: 9100
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    profiles:
+      - emosi
+      - semua
+    restart: unless-stopped
