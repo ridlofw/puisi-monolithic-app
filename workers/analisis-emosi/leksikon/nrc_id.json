@@ -1,0 +1,595 @@
+{
+  "bahagia": [
+    "senang"
+  ],
+  "gembira": [
+    "senang"
+  ],
+  "sukacita": [
+    "senang"
+  ],
+  "senang": [
+    "senang"
+  ],
+  "suka": [
+    "senang"
+  ],
+  "tertawa": [
+    "senang"
+  ],
+  "tawa": [
+    "senang"
+  ],
+  "senyum": [
+    "senang"
+  ],
+  "riang": [
+    "senang"
+  ],
+  "ceria": [
+    "senang"
+  ],
+  "pesta": [
+    "senang"
+  ],
+  "berkah": [
+    "senang",
+    "percaya"
+  ],
+  "anugerah": [
+    "senang",
+    "percaya"
+  ],
+  "damai": [
+    "senang",
+    "percaya"
+  ],
+  "tenang": [
+    "senang",
+    "percaya"
+  ],
+  "cinta": [
+    "senang",
+    "percaya"
+  ],
+  "kasih": [
+    "senang",
+    "percaya"
+  ],
+  "sayang": [
+    "senang",
+    "percaya"
+  ],
+  "bunga": [
+    "senang"
+  ],
+  "kembang": [
+    "senang"
+  ],
+  "mekar": [
+    "senang",
+    "antisipasi"
+  ],
+  "harum": [
+    "senang"
+  ],
+  "manis": [
+    "senang"
+  ],
+  "indah": [
+    "senang"
+  ],
+  "elok": [
+    "senang"
+  ],
+  "pesona": [
+    "senang",
+    "terkejut"
+  ],
+  "surga": [
+    "senang",
+    "percaya"
+  ],
+  "pelangi": [
+    "senang",
+    "terkejut"
+  ],
+  "mentari": [
+    "senang",
+    "antisipasi"
+  ],
+  "percaya": [
+    "percaya"
+  ],
+  "setia": [
+    "percaya"
+  ],
+  "jujur": [
+    "percaya"
+  ],
+  "sahabat": [
+    "percaya",
+    "senang"
+  ],
+  "teman": [
+    "percaya",
+    "senang"
+  ],
+  "kawan": [
+    "percaya"
+  ],
+  "keluarga": [
+    "percaya",
+    "senang"
+  ],
+  "ibu": [
+    "percaya",
+    "kasih",
+    "senang"
+  ],
+  "ayah": [
+    "percaya"
+  ],
+  "guru": [
+    "percaya"
+  ],
+  "pemimpin": [
+    "percaya"
+  ],
+  "aman": [
+    "percaya"
+  ],
+  "selamat": [
+    "percaya"
+  ],
+  "sehat": [
+    "percaya",
+    "senang"
+  ],
+  "padi": [
+    "percaya",
+    "antisipasi"
+  ],
+  "pinang": [
+    "percaya"
+  ],
+  "rumah": [
+    "percaya"
+  ],
+  "lisan": [
+    "percaya"
+  ],
+  "janji": [
+    "percaya"
+  ],
+  "tulus": [
+    "percaya"
+  ],
+  "suci": [
+    "percaya"
+  ],
+  "adil": [
+    "percaya"
+  ],
+  "benar": [
+    "percaya"
+  ],
+  "kebenaran": [
+    "percaya"
+  ],
+  "iman": [
+    "percaya"
+  ],
+  "taat": [
+    "percaya"
+  ],
+  "patuh": [
+    "percaya"
+  ],
+  "hormat": [
+    "percaya"
+  ],
+  "baik": [
+    "percaya",
+    "senang"
+  ],
+  "hati": [
+    "percaya"
+  ],
+  "bersama": [
+    "percaya",
+    "senang"
+  ],
+  "sepenuh": [
+    "percaya"
+  ],
+  "peduli": [
+    "percaya",
+    "senang"
+  ],
+  "baca": [
+    "percaya",
+    "antisipasi"
+  ],
+  "samudra": [
+    "percaya",
+    "terkejut"
+  ],
+  "pikir": [
+    "percaya",
+    "antisipasi"
+  ],
+  "takut": [
+    "takut"
+  ],
+  "cemas": [
+    "takut"
+  ],
+  "khawatir": [
+    "takut"
+  ],
+  "gentar": [
+    "takut"
+  ],
+  "ngeri": [
+    "takut"
+  ],
+  "seram": [
+    "takut"
+  ],
+  "hantu": [
+    "takut"
+  ],
+  "gelap": [
+    "takut",
+    "sedih"
+  ],
+  "kelam": [
+    "takut",
+    "sedih"
+  ],
+  "panik": [
+    "takut",
+    "terkejut"
+  ],
+  "bahaya": [
+    "takut"
+  ],
+  "ancam": [
+    "takut",
+    "marah"
+  ],
+  "ancaman": [
+    "takut"
+  ],
+  "racun": [
+    "takut",
+    "jijik"
+  ],
+  "maut": [
+    "takut",
+    "sedih"
+  ],
+  "kematian": [
+    "takut",
+    "sedih"
+  ],
+  "kubur": [
+    "takut",
+    "sedih"
+  ],
+  "darah": [
+    "takut",
+    "marah"
+  ],
+  "musibah": [
+    "takut",
+    "sedih"
+  ],
+  "bencana": [
+    "takut",
+    "sedih"
+  ],
+  "susah": [
+    "takut",
+    "sedih"
+  ],
+  "kesusahan": [
+    "takut",
+    "sedih"
+  ],
+  "siksa": [
+    "takut",
+    "sedih"
+  ],
+  "sedih": [
+    "sedih"
+  ],
+  "duka": [
+    "sedih"
+  ],
+  "pilu": [
+    "sedih"
+  ],
+  "tangis": [
+    "sedih"
+  ],
+  "air mata": [
+    "sedih"
+  ],
+  "kecewa": [
+    "sedih"
+  ],
+  "sesal": [
+    "sedih"
+  ],
+  "hampa": [
+    "sedih"
+  ],
+  "sepi": [
+    "sedih"
+  ],
+  "sunyi": [
+    "sedih"
+  ],
+  "sendiri": [
+    "sedih"
+  ],
+  "derita": [
+    "sedih"
+  ],
+  "penderitaan": [
+    "sedih"
+  ],
+  "sengsara": [
+    "sedih"
+  ],
+  "nestapa": [
+    "sedih"
+  ],
+  "luka": [
+    "sedih"
+  ],
+  "sakit": [
+    "sedih"
+  ],
+  "pedih": [
+    "sedih"
+  ],
+  "perih": [
+    "sedih"
+  ],
+  "hilang": [
+    "sedih"
+  ],
+  "gugur": [
+    "sedih"
+  ],
+  "runtuh": [
+    "sedih"
+  ],
+  "patah": [
+    "sedih"
+  ],
+  "kalah": [
+    "sedih"
+  ],
+  "gagal": [
+    "sedih"
+  ],
+  "kabut": [
+    "sedih"
+  ],
+  "dingin": [
+    "sedih"
+  ],
+  "redup": [
+    "sedih"
+  ],
+  "pucat": [
+    "sedih"
+  ],
+  "lemah": [
+    "sedih"
+  ],
+  "lupa": [
+    "sedih"
+  ],
+  "marah": [
+    "marah"
+  ],
+  "benci": [
+    "marah"
+  ],
+  "kesal": [
+    "marah"
+  ],
+  "jengkel": [
+    "marah"
+  ],
+  "gusar": [
+    "marah"
+  ],
+  "geram": [
+    "marah"
+  ],
+  "murka": [
+    "marah"
+  ],
+  "dendam": [
+    "marah"
+  ],
+  "lawan": [
+    "marah"
+  ],
+  "musuh": [
+    "marah"
+  ],
+  "serang": [
+    "marah"
+  ],
+  "hantam": [
+    "marah"
+  ],
+  "robek": [
+    "marah"
+  ],
+  "tikam": [
+    "marah"
+  ],
+  "kejam": [
+    "marah"
+  ],
+  "zalim": [
+    "marah"
+  ],
+  "panas": [
+    "marah"
+  ],
+  "kutuk": [
+    "marah"
+  ],
+  "hina": [
+    "marah",
+    "jijik"
+  ],
+  "kaget": [
+    "terkejut"
+  ],
+  "terkejut": [
+    "terkejut"
+  ],
+  "heran": [
+    "terkejut"
+  ],
+  "ajaib": [
+    "terkejut",
+    "senang"
+  ],
+  "takjub": [
+    "terkejut",
+    "senang"
+  ],
+  "kagum": [
+    "terkejut",
+    "senang"
+  ],
+  "tiba-tiba": [
+    "terkejut"
+  ],
+  "mendadak": [
+    "terkejut"
+  ],
+  "petir": [
+    "terkejut",
+    "takut"
+  ],
+  "guncang": [
+    "terkejut",
+    "takut"
+  ],
+  "ganjil": [
+    "terkejut"
+  ],
+  "aneh": [
+    "terkejut"
+  ],
+  "jijik": [
+    "jijik"
+  ],
+  "kotor": [
+    "jijik"
+  ],
+  "busuk": [
+    "jijik"
+  ],
+  "najis": [
+    "jijik"
+  ],
+  "basi": [
+    "jijik"
+  ],
+  "lendir": [
+    "jijik"
+  ],
+  "muntah": [
+    "jijik"
+  ],
+  "bangkai": [
+    "jijik"
+  ],
+  "sampah": [
+    "jijik"
+  ],
+  "noda": [
+    "jijik"
+  ],
+  "aib": [
+    "jijik",
+    "sedih"
+  ],
+  "tunggu": [
+    "antisipasi"
+  ],
+  "menunggu": [
+    "antisipasi"
+  ],
+  "nanti": [
+    "antisipasi"
+  ],
+  "harap": [
+    "antisipasi",
+    "senang"
+  ],
+  "harapan": [
+    "antisipasi",
+    "senang"
+  ],
+  "cita-cita": [
+    "antisipasi",
+    "senang"
+  ],
+  "impian": [
+    "antisipasi",
+    "senang"
+  ],
+  "esok": [
+    "antisipasi"
+  ],
+  "besok": [
+    "antisipasi"
+  ],
+  "fajar": [
+    "antisipasi",
+    "senang"
+  ],
+  "pagi": [
+    "antisipasi",
+    "senang"
+  ],
+  "matahari": [
+    "antisipasi",
+    "senang"
+  ],
+  "jalan": [
+    "antisipasi"
+  ],
+  "tuju": [
+    "antisipasi"
+  ],
+  "tujuan": [
+    "antisipasi"
+  ],
+  "siap": [
+    "antisipasi"
+  ],
+  "bangun": [
+    "antisipasi"
+  ],
+  "rencana": [
+    "antisipasi"
+  ],
+  "kembali": [
+    "antisipasi"
+  ]
+}
