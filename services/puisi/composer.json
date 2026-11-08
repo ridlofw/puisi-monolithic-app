@@ -1,0 +1,27 @@
+{
+    "name": "puisi/poem-service",
+    "description": "Layanan Publikasi Puisi Stateless dengan Transactional Outbox dan Multi-Tier Cache",
+    "type": "project",
+    "require": {
+        "php": ">=8.3",
+        "ext-json": "*",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-redis": "*",
+        "ext-sockets": "*",
+        "php-amqplib/php-amqplib": "^3.7"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Puisi\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
+
