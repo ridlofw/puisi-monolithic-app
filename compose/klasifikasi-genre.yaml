@@ -1,3 +1,21 @@
 # worker Klasifikasi Genre. Pemilik: Ridlo
 # setiap service diberi profiles: ["genre", "semua"], lihat kontrak/README.md
-services: {}
+# dua replika berbagi q.klasifikasi-genre, tambah dengan: docker compose up --scale klasifikasi-genre=3
+services:
+  klasifikasi-genre:
+    build: ./workers/klasifikasi-genre
+    profiles: ["genre", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+      QUEUE: q.klasifikasi-genre
+      NAMA_WORKER: klasifikasi-genre
+      PORT_METRIK: "9100"
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
