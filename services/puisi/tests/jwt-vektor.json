@@ -1,0 +1,21 @@
+{
+  "keterangan": "HS256. Header {\"alg\":\"HS256\",\"typ\":\"JWT\"} dan klaim diserialisasi JSON ringkas tanpa spasi, klaim berurutan sub, username, nama, iat, exp. Base64url tanpa padding.",
+  "kunci": "kunci-uji-kontrak-puisi",
+  "klaim": {
+    "sub": "1",
+    "username": "penyair",
+    "nama": "Penyair Uji",
+    "iat": 1767225600,
+    "exp": 4102444800
+  },
+  "token_benar": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJwZW55YWlyIiwibmFtYSI6IlBlbnlhaXIgVWppIiwiaWF0IjoxNzY3MjI1NjAwLCJleHAiOjQxMDI0NDQ4MDB9.XQg_4dOfSAH4aG4zmcIIpT_Y2luV2mgPT_EAXn_qh7U",
+  "klaim_kedaluwarsa": {
+    "sub": "1",
+    "username": "penyair",
+    "nama": "Penyair Uji",
+    "iat": 1767225600,
+    "exp": 1767229200
+  },
+  "token_kedaluwarsa": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJwZW55YWlyIiwibmFtYSI6IlBlbnlhaXIgVWppIiwiaWF0IjoxNzY3MjI1NjAwLCJleHAiOjE3NjcyMjkyMDB9.tFZfGb5j95dkG9UxqZ-gb1OrvOzBe4ZkZfjdMRJnV5o",
+  "token_tanda_tangan_salah": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJwZW55YWlyIiwibmFtYSI6IlBlbnlhaXIgVWppIiwiaWF0IjoxNzY3MjI1NjAwLCJleHAiOjQxMDI0NDQ4MDB9.9EvxDI0I8eZXBku7Exfp6Rn_HFA1WW8enor02lwaKRc"
+}

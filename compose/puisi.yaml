@@ -1,3 +1,214 @@
-# poem-service, poem-relay, poem-db, dan replikanya. Pemilik: Ridlo
+# poem-service, poem-relay, poem-consumer, InnoDB Cluster 3-node (poem-db-1..3), dan 2 MySQL Router. Pemilik: Ridlo
 # setiap service diberi profiles: ["puisi", "semua"], lihat kontrak/README.md
-services: {}
+
+x-mysql-common: &mysql-common
+  image: mysql:8.4
+  profiles: ["puisi", "semua"]
+  restart: unless-stopped
+  environment:
+    MYSQL_ROOT_PASSWORD: poem
+    MYSQL_ROOT_HOST: "%"
+  healthcheck:
+    test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppoem"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 15s
+
+x-puisi-env: &puisi-env
+  DB_WRITE_HOSTS: poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306
+  DB_READ_HOSTS: poem-db-router-1:6447,poem-db-router-2:6447,poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306
+  DB_NAME: poem_db
+  DB_USER: poem
+  DB_PASS: poem
+  REDIS_HOSTS: redis:6379
+  AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+  SUMBER_WAJIB: auto-tagging,klasifikasi-genre
+
+services:
+  poem-db-1:
+    <<: *mysql-common
+    hostname: poem-db-1
+    command:
+      - --server-id=101
+      - --report-host=poem-db-1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-1:/var/lib/mysql
+      - ./services/puisi/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+  poem-db-2:
+    <<: *mysql-common
+    hostname: poem-db-2
+    command:
+      - --server-id=102
+      - --report-host=poem-db-2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-2:/var/lib/mysql
+      - ./services/puisi/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+  poem-db-3:
+    <<: *mysql-common
+    hostname: poem-db-3
+    command:
+      - --server-id=103
+      - --report-host=poem-db-3
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-3:/var/lib/mysql
+      - ./services/puisi/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+  poem-db-cluster-init:
+    image: mysql:8.4
+    profiles: ["puisi", "semua"]
+    restart: on-failure
+    environment:
+      MYSQL_ROOT_PASSWORD: poem
+    volumes:
+      - ./services/puisi/db/init.sql:/cluster/init.sql:ro
+      - ./services/puisi/db/init-cluster.sh:/cluster/init-cluster.sh:ro
+    entrypoint: ["/bin/sh", "/cluster/init-cluster.sh"]
+    depends_on:
+      poem-db-1:
+        condition: service_healthy
+      poem-db-2:
+        condition: service_healthy
+      poem-db-3:
+        condition: service_healthy
+
+  poem-db-router-1:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    hostname: poem-db-router-1
+    profiles: ["puisi", "semua"]
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: poem-db-1
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: poem
+      MYSQL_INNODB_CLUSTER_MEMBERS: 3
+      MYSQL_CREATE_ROUTER_USER: 0
+    depends_on:
+      poem-db-cluster-init:
+        condition: service_completed_successfully
+
+  poem-db-router-2:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    hostname: poem-db-router-2
+    profiles: ["puisi", "semua"]
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: poem-db-2
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: poem
+      MYSQL_INNODB_CLUSTER_MEMBERS: 3
+      MYSQL_CREATE_ROUTER_USER: 0
+    depends_on:
+      poem-db-cluster-init:
+        condition: service_completed_successfully
+
+  poem-service:
+    build: ./services/puisi
+    profiles: ["puisi", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-service
+    secrets:
+      - jwt_secret
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "8080"
+    depends_on:
+      poem-db-cluster-init:
+        condition: service_completed_successfully
+
+  poem-relay:
+    build: ./services/puisi
+    command: ["php", "bin/relay.php"]
+    profiles: ["puisi", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-relay
+      PORT_METRIK: "9100"
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      poem-db-cluster-init:
+        condition: service_completed_successfully
+      rabbitmq-1:
+        condition: service_healthy
+
+  poem-consumer:
+    build: ./services/puisi
+    command: ["php", "bin/consumer.php"]
+    profiles: ["puisi", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-consumer
+      QUEUE_HASIL: q.puisi-hasil
+      PORT_METRIK: "9100"
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      poem-db-cluster-init:
+        condition: service_completed_successfully
+      rabbitmq-1:
+        condition: service_healthy
+
+volumes:
+  poem-db-1:
+  poem-db-2:
+  poem-db-3:
