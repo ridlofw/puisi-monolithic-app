@@ -1,11 +1,13 @@
-"""Logika fitur. Satu-satunya berkas yang perlu diganti saat templat disalin.
+"""Logika Auto-tagging: puisi.dibuat menjadi puisi.dianalisis dengan sumber auto-tagging.
 
-proses(event) menerima amplop yang sudah divalidasi dan mengembalikan daftar
-(routing_key, data) untuk diterbitkan. Daftar kosong berarti tidak ada event hasil.
-Melempar exception berarti gagal: pesan dikembalikan ke queue, dan setelah tiga
-percobaan pindah ke DLQ.
+Hanya bergantung pada isi event dan df.json yang dibundel, jadi event yang sama selalu
+menghasilkan hasil yang sama dan aman diproses ulang.
 """
 import os
+
+import tagging
+
+SUMBER = 'auto-tagging'
 
 
 def proses(event):
@@ -14,6 +16,7 @@ def proses(event):
     data = event['data']
     if 'puisi_id' not in data:
         raise ValueError('data tanpa puisi_id')
-    # contoh hasil untuk worker sungguhan:
-    # return [('puisi.dianalisis', {'puisi_id': data['puisi_id'], 'sumber': 'auto-tagging', 'hasil': {...}})]
-    return []
+    if not isinstance(data.get('isi'), str):
+        raise ValueError('data tanpa isi')
+    hasil = tagging.analisis(data.get('judul'), data['isi'])
+    return [('puisi.dianalisis', {'puisi_id': data['puisi_id'], 'sumber': SUMBER, 'hasil': hasil})]

@@ -33,6 +33,30 @@ Sastrawi tidak sempurna. `terasa` di-stem menjadi `asa`, dan `baik` serta `bulan
 bawaannya. Kata leksikon diuji agar selalu berupa kata dasar dan bukan stopword, sehingga
 setiap kata di sana memang bisa cocok.
 
+## Sebagai worker
+
+Mengonsumsi `q.auto-tagging` (binding `puisi.dibuat`) dan menerbitkan `puisi.dianalisis` dengan
+`sumber: auto-tagging`, meneruskan `correlation_id` event asal.
+
+| Masukan | Perilaku |
+|---|---|
+| `data` tanpa `puisi_id`, atau `isi` bukan teks | gagal, diulang dua kali, lalu masuk `q.auto-tagging.dlq` |
+| body bukan amplop yang sah | sama, masuk DLQ setelah tiga percobaan |
+| `isi` kosong | bukan kegagalan, hasilnya `{keyword: [], kategori: umum}` |
+| `judul` null | diterima, hanya `isi` yang dihitung |
+| event yang sama dua kali | hasil identik, karena hanya bergantung pada isi event dan `df.json` |
+
+```
+docker compose --profile auto-tagging up -d --build              # dua replika
+python scripts/kirim_event.py puisi.dibuat kontrak/contoh/pantun.json
+python scripts/intip_event.py --tipe puisi.dianalisis --tunggu 5
+docker compose --profile auto-tagging up -d --scale auto-tagging=3
+```
+
+Dua replika dijalankan secara bawaan lewat `deploy.replicas` di `compose/auto-tagging.yaml`.
+Prefetch 1 membuat replika berbagi pesan secara bergiliran. Metrik ada di port 9100 setiap
+container dan ditemukan Prometheus lewat label `metrics.scrape`.
+
 ## Mengubah korpus atau leksikon
 
 ```

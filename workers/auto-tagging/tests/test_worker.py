@@ -12,8 +12,11 @@ import worker  # noqa: E402
 from metrik import Metrik  # noqa: E402
 
 
+PUISI = {'puisi_id': 1, 'judul': 'Pendakian', 'isi': 'Dari puncak gunung aku memandang laut'}
+
+
 def event_contoh(**data):
-    return amplop.buat('puisi.dibuat', data or {'puisi_id': 1}, 'cid-uji')
+    return amplop.buat('puisi.dibuat', data or dict(PUISI), 'cid-uji')
 
 
 class KanalPalsu(object):
@@ -70,8 +73,29 @@ class TestProses(unittest.TestCase):
     def tearDown(self):
         os.environ.pop('GAGAL_SENGAJA', None)
 
-    def test_tanpa_hasil(self):
-        self.assertEqual(proses.proses(event_contoh()), [])
+    def test_hasil_sesuai_kontrak(self):
+        [(rk, data)] = proses.proses(event_contoh())
+        self.assertEqual(rk, 'puisi.dianalisis')
+        self.assertEqual(data['puisi_id'], 1)
+        self.assertEqual(data['sumber'], 'auto-tagging')
+        self.assertEqual(set(data['hasil']), {'keyword', 'kategori'})
+        self.assertEqual(data['hasil']['kategori'], 'alam')
+        self.assertLessEqual(len(data['hasil']['keyword']), 5)
+
+    def test_event_sama_hasil_sama(self):
+        self.assertEqual(proses.proses(event_contoh()), proses.proses(event_contoh()))
+
+    def test_isi_kosong_bukan_kegagalan(self):
+        [(rk, data)] = proses.proses(event_contoh(puisi_id=2, judul='', isi=''))
+        self.assertEqual(data['hasil'], {'keyword': [], 'kategori': 'umum'})
+
+    def test_judul_null_diterima(self):
+        [(rk, data)] = proses.proses(event_contoh(puisi_id=3, judul=None, isi='ombak di pantai'))
+        self.assertEqual(data['hasil']['kategori'], 'alam')
+
+    def test_data_tanpa_isi(self):
+        with self.assertRaises(ValueError):
+            proses.proses(event_contoh(puisi_id=4, judul='tanpa isi'))
 
     def test_gagal_disengaja(self):
         os.environ['GAGAL_SENGAJA'] = '1'
