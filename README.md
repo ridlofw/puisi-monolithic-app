@@ -30,7 +30,7 @@ Kontrak antarlayanan, yaitu rute API, JWT, bentuk event, queue, dan aturan Compo
 | auth-service | `services/auth/` | `compose/auth.yaml` | Ifham |
 | poem-service | `services/puisi/` | `compose/puisi.yaml` | Ridlo |
 | search-service | `services/pencarian/` | `compose/pencarian.yaml` | Evan |
-| Auto-tagging | `workers/auto-tagging/` | `compose/auto-tagging.yaml` | Pison |
+| Auto-tagging | [`workers/auto-tagging/`](workers/auto-tagging/README.md) | `compose/auto-tagging.yaml` | Pison |
 | Klasifikasi Genre | `workers/klasifikasi-genre/` | `compose/klasifikasi-genre.yaml` | Ridlo |
 | Text-to-Speech | `workers/text-to-speech/` | `compose/text-to-speech.yaml` | Ifham |
 | Analisis Emosi | `workers/analisis-emosi/` | `compose/analisis-emosi.yaml` | Ray |
