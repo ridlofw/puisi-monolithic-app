@@ -1,3 +1,121 @@
-# worker Text-to-Speech, tts-db, dan object storage S3. Pemilik: Ifham
-# setiap service diberi profiles: ["tts", "semua"], lihat kontrak/README.md
-services: {}
+# I2/I3 Indonesian text-to-speech. Queue declarations stay owned by rabbitmq/definitions.json.
+services:
+  tts-db:
+    image: mysql:8.4
+    profiles: ["tts", "semua"]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: tts
+      MYSQL_USER: tts
+      MYSQL_PASSWORD_FILE: /run/secrets/tts_db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/tts_db_root_password
+    secrets:
+      - tts_db_password
+      - tts_db_root_password
+    volumes:
+      - tts-db:/var/lib/mysql
+      - ./workers/text-to-speech/schema.sql:/docker-entrypoint-initdb.d/001-tts.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=\"$$(cat /run/secrets/tts_db_root_password)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.53
+    profiles: ["tts", "semua"]
+    restart: unless-stopped
+    command: ["server", "-s3", "-s3.config=/run/secrets/seaweed_s3_config"]
+    secrets:
+      - seaweed_s3_config
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  tts-audio-init:
+    build:
+      context: .
+      dockerfile: workers/text-to-speech/Dockerfile
+    profiles: ["tts", "semua"]
+    restart: "no"
+    command: ["python", "init_storage.py"]
+    environment:
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_BUCKET: audio
+      TTS_INIT_STORAGE: "1"
+    secrets:
+      - s3_init_access_key
+      - s3_init_secret_key
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  text-to-speech:
+    build:
+      context: .
+      dockerfile: workers/text-to-speech/Dockerfile
+    profiles: ["tts", "semua"]
+    restart: unless-stopped
+    command: ["python", "worker.py"]
+    deploy:
+      replicas: 2
+    environment:
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+      QUEUE: q.text-to-speech
+      NAMA_WORKER: text-to-speech
+      PORT_METRIK: "9100"
+      DB_HOST: tts-db
+      DB_NAME: tts
+      DB_USER: tts
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_BUCKET: audio
+    secrets:
+      - tts_db_password
+      - s3_access_key
+      - s3_secret_key
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
+      rabbitmq-2:
+        condition: service_healthy
+      rabbitmq-3:
+        condition: service_healthy
+      tts-db:
+        condition: service_healthy
+      tts-audio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+secrets:
+  tts_db_password:
+    file: ./secrets/tts_db_password.txt
+  tts_db_root_password:
+    file: ./secrets/tts_db_root_password.txt
+  s3_access_key:
+    file: ./secrets/s3_access_key.txt
+  s3_secret_key:
+    file: ./secrets/s3_secret_key.txt
+  s3_init_access_key:
+    file: ./secrets/s3_init_access_key.txt
+  s3_init_secret_key:
+    file: ./secrets/s3_init_secret_key.txt
+  seaweed_s3_config:
+    file: ./secrets/seaweedfs_s3.json
+
+volumes:
+  tts-db:
+  seaweedfs-data:

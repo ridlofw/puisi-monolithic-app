@@ -9,7 +9,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt ./requirements.txt
+COPY workers/text-to-speech/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pin the upstream model repository revision and verify both downloaded files.
@@ -24,8 +24,9 @@ RUN mkdir -p /opt/voices \
     && echo '17de01db7ac654655436b6e509893c72  /opt/voices/id_ID-news_tts-medium.onnx' | md5sum --check - \
     && echo 'c023cfa031cc9ed4cf5dd8d2ef1e48ed  /opt/voices/id_ID-news_tts-medium.onnx.json' | md5sum --check -
 
-COPY suara.py ./suara.py
-COPY tests ./tests
+COPY workers/text-to-speech/suara.py ./suara.py
+COPY workers/text-to-speech/tests ./tests
+COPY workers/_templat/amplop.py workers/_templat/metrik.py workers/text-to-speech/store.py workers/text-to-speech/worker.py workers/text-to-speech/init_storage.py workers/text-to-speech/benchmark.py ./
 RUN useradd --system --uid 10001 --create-home tts \
     && mkdir -p /work \
     && chown -R tts:tts /work
