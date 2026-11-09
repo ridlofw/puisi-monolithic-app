@@ -8,7 +8,8 @@ Date: 2026-11-09 (Asia/Jakarta)
 - Current branch: `ifham/text-to-speech`
 - Branch base: `2d0e1e88906caaa2dc64eb3d8b33273ee4827ef3`
 - I2 commit: `2b8b00b` — `feat: synthesize Indonesian speech from poem text with Piper`
-- I3 remains a working-tree change set at this checkpoint. It has not been committed or pushed.
+- I3 commit: `06ecabd` — `feat: run text-to-speech as a worker storing audio in S3 storage`
+- Both feature commits are on `origin/ifham/text-to-speech`.
 - `main` and `ifham/layanan-auth` were not modified in this session.
 
 ## ZIP reconciliation and architecture
@@ -76,4 +77,4 @@ Not exercised against live services: RabbitMQ outage, MySQL outage, process term
 - Verify licensing/provenance of the Indonesian voice before any redistribution or commercial deployment.
 - Run the full three-node RabbitMQ profile to verify quorum membership and broker failover.
 - Live DB-outage and worker-kill recovery tests remain NOT RUN.
-- The I3 files are reviewed and validated but have not been committed. No TTS push was made. The required I3 commit message is `feat: run text-to-speech as a worker storing audio in S3 storage`.
+- The three-node RabbitMQ quorum and live database-outage/worker-kill recovery checks remain unverified as described above.
