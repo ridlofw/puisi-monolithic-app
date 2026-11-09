@@ -20,7 +20,7 @@ The auth service issues stateless HS256 JWTs compatible with the poem-service ve
   - Commit `004f62ae9aab692372f73f7685c41d9d1b8ee57a` — `docs: move implementation report under docs`
 - The two feature branches retain separate histories. No merge or force-push was performed. The full report is an additional document on the TTS branch; the I1 branch retains its own branch-specific report.
 
-## Initial reconnaissance and ZIP reconciliation
+## Initial reconnaissance and reconciliation
 
 The repository root, current branch, commit, remote, and working-tree state were checked before implementation. Work was limited to the feature branch requested in each session. The existing contracts and service patterns were inspected before changes, including the poem-service JWT verifier, event envelope, RabbitMQ definitions, worker template, Compose fragments, gateway routes, and frontend request helper.
 
