@@ -1,3 +1,21 @@
 # worker Auto-tagging. Pemilik: Pison
 # setiap service diberi profiles: ["auto-tagging", "semua"], lihat kontrak/README.md
-services: {}
+# dua replika berbagi q.auto-tagging, tambah dengan: docker compose up --scale auto-tagging=3
+services:
+  auto-tagging:
+    build: ./workers/auto-tagging
+    profiles: ["auto-tagging", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+      QUEUE: q.auto-tagging
+      NAMA_WORKER: auto-tagging
+      PORT_METRIK: "9100"
+    labels:
+      metrics.scrape: "true"
+      metrics.port: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
