@@ -1,3 +1,64 @@
 # auth-service dan auth-db. Pemilik: Ifham
-# setiap service diberi profiles: ["auth", "semua"], lihat kontrak/README.md
-services: {}
+# Provision secrets/auth_db_root_password.txt, secrets/auth_db_password.txt, and
+# secrets/jwt_secret.txt locally. The application replicas share these secrets.
+x-auth-profile: &auth-profile ["auth", "semua"]
+
+services:
+  auth-db:
+    image: mysql:8.4
+    profiles: *auth-profile
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: auth_db
+      MYSQL_USER: auth
+      MYSQL_PASSWORD_FILE: /run/secrets/auth_db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/auth_db_root_password
+    secrets:
+      - auth_db_password
+      - auth_db_root_password
+    volumes:
+      - auth-db:/var/lib/mysql
+      - ./services/auth/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uauth -p\"$$(cat /run/secrets/auth_db_password)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  auth-service:
+    build: ./services/auth
+    profiles: *auth-profile
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: "3306"
+      DB_NAME: auth_db
+      DB_USER: auth
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets:
+      - auth_db_password
+      - jwt_secret
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/sehat') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+volumes:
+  auth-db:
+
+secrets:
+  auth_db_password:
+    file: ./secrets/auth_db_password.txt
+  auth_db_root_password:
+    file: ./secrets/auth_db_root_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt

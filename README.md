@@ -54,8 +54,28 @@ docker compose --profile semua up -d              # semuanya
 | <http://localhost> | aplikasi |
 | <http://localhost:15672> | management RabbitMQ, pengguna `puisi`, sandi `puisi`. Node 2 dan 3 di 15673 dan 15674 |
 
-Selama layanan baru belum di-merge, frontend masih memakai monolit Tugas 1 lewat `KONFIG.backend` di
-`web/js/api.js`, jadi aplikasi tetap bisa dipakai dengan profile `legacy`.
+Frontend memakai `/api/auth/` untuk registrasi dan login. Aksi puisi yang belum dipindah tetap
+tersedia lewat `KONFIG.backend` di `web/js/api.js`.
+
+### Auth service (profile `auth`)
+
+Buat secret lokal sebelum menjalankan layanan:
+
+```
+python scripts/siapkan_rahasia.py
+python scripts/siapkan_rahasia_auth.py
+docker compose --profile auth up -d --build
+```
+
+Fragmen Compose auth menjalankan MySQL 8.4 dan dua replika auth-service dengan database dan JWT
+signing secret yang sama. Registrasi dan login tersedia di `/api/auth/register` dan `/api/auth/login`.
+Browser menyimpan bearer token satu jam di `localStorage` dengan kunci `puisi.token`; decoding klaim
+di browser hanya mengatur tampilan. Layanan terlindungi harus memverifikasi tanda tangan JWT sendiri.
+JavaScript dapat membaca `localStorage`, sehingga XSS dapat membocorkan token; pertahankan escaping
+output dan gunakan Content Security Policy yang kuat.
+
+The auth service has no PHP session state and does not set authentication cookies. See
+`services/auth/README.md` for secret handling, API details, and test commands.
 
 ## Menguji
 

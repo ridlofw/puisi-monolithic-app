@@ -44,11 +44,30 @@ function ambilToken() {
     }
 }
 
+function simpanToken(token) {
+    try {
+        localStorage.setItem(KONFIG.kunciToken, token);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function hapusToken() {
+    try {
+        localStorage.removeItem(KONFIG.kunciToken);
+    } catch (e) {
+        // Storage may be disabled by the browser; callers still return to login.
+    }
+}
+
 // Semua panggilan backend lewat sini. Token dipasang otomatis bila ada,
 // jadi modul lain tidak perlu mengurus header Authorization sendiri
 function panggil(url, opsi) {
     opsi = opsi || {};
-    opsi.credentials = 'include';
+    if (!opsi.credentials) {
+        opsi.credentials = 'include';
+    }
     opsi.headers = opsi.headers || {};
 
     var token = ambilToken();
