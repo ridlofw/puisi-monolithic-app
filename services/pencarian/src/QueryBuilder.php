@@ -13,10 +13,7 @@ final class QueryBuilder
     //Susun badan search, filter visibilitas selalu terpasang dan tidak bisa dimatikan oleh parameter.
     public static function bangun(string $q = '', string $genre = '', string $tag = '', string $hal = ''): array
     {
-        $halaman = self::halaman($hal);
-        $q       = mb_substr(trim($q), 0, self::Q_MAKS);
-        $genre   = mb_strtolower(trim($genre));
-        $tag     = mb_strtolower(trim($tag));
+        ['q' => $q, 'genre' => $genre, 'tag' => $tag, 'hal' => $halaman] = self::parameter($q, $genre, $tag, $hal);
 
         $filter = [['term' => ['visibilitas' => self::PUBLIK]]];
         if ($genre !== '') {
@@ -48,6 +45,17 @@ final class QueryBuilder
             $badan['sort'] = [['tgl_submit' => 'desc'], ['_id' => 'desc']];
         }
         return $badan;
+    }
+
+    //Parameter yang sudah dibersihkan. Dipakai untuk menyusun query dan untuk key cache, jadi dua permintaan yang artinya sama selalu menghasilkan nilai yang sama.
+    public static function parameter(string $q = '', string $genre = '', string $tag = '', string $hal = ''): array
+    {
+        return [
+            'q'     => mb_substr(trim($q), 0, self::Q_MAKS),
+            'genre' => mb_strtolower(trim($genre)),
+            'tag'   => mb_strtolower(trim($tag)),
+            'hal'   => self::halaman($hal),
+        ];
     }
 
     public static function halaman(string $hal): int

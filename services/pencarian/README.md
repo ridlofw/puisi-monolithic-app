@@ -41,6 +41,29 @@ Kegagalan mengikuti kontrak bagian 4: percobaan 1 dan 2 diterbitkan ulang ke que
 `x-percobaan` naik, percobaan 3 di-reject dan masuk `q.pencarian-indeks.dlq`. Consumer tidak berhenti
 saat OpenSearch mati, ia hanya menggagalkan pesannya.
 
+## Cache
+
+Dua lapis, keduanya menjaga aturan "hanya puisi publik" karena yang disimpan adalah jawaban query yang
+sudah difilter.
+
+| Lapis | Di mana | TTL | Dibuang oleh |
+|---|---|---|---|
+| Nginx `proxy_cache` | gateway, key memuat query string | 10 detik | kedaluwarsa |
+| Redis cache-aside | search-service, key `cari:v{versi}:{sha1 parameter}` | 120 detik | naiknya `cari:versi` |
+
+- Parameter dibersihkan sebelum di-hash (`QueryBuilder::parameter`), jadi urutan parameter, spasi, dan
+  huruf besar kecil tidak membuat entri ganda.
+- Consumer menjalankan `INCR cari:versi` setiap kali sebuah event benar-benar mengubah indeks. Key lama tidak
+  dihapus, hanya tidak terbaca lagi. Event ganda (OpenSearch menjawab `noop`) tidak membuang cache.
+- Consumer menulis dengan `refresh=wait_for`, jadi versi baru hanya naik setelah perubahan bisa dicari.
+  Tanpa itu, pencarian yang datang di antara tulis dan refresh akan menyimpan hasil basi di key baru.
+- `X-Cache-Layer` bernilai `redis` atau `opensearch`. Lapisan Nginx terlihat di `X-Cache-Status`. Lewat
+  gateway, jawaban yang sama dalam 10 detik datang dari Nginx dan membawa `X-Cache-Layer` aslinya,
+  jadi untuk menguji Redis panggil search-service langsung.
+- Redis mati: `Cache::versi()` mengembalikan null dan pencarian jalan dari OpenSearch. Consumer tidak
+  menggagalkan pesan hanya karena Redis, jadi bila Redis tidak terjangkau saat indeks berubah, hasil lama yang
+  masih tersimpan hidup paling lama 120 detik.
+
 ## Uji
 
 ```

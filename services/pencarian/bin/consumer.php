@@ -7,6 +7,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use Pencarian\Amqp;
+use Pencarian\Cache;
 use Pencarian\Konfig;
 use Pencarian\Log;
 use Pencarian\OpenSearch;
@@ -53,6 +54,10 @@ while (true) {
                     'puisi_id'       => $amplop['data']['puisi_id'],
                 ];
                 $berubah = Penangan::terapkan($amplop, $os);
+                if ($berubah && !Cache::naikkanVersi()) {
+                    // pesan tidak digagalkan hanya karena cache. Hasil lama paling lama hidup selama TTL
+                    Log::peringatan('versi cache pencarian tidak bisa dinaikkan, Redis tidak terjangkau', $konteks);
+                }
                 $kanal->basic_ack($tag);
                 Log::info($berubah ? 'indeks diperbarui' : 'event tidak mengubah indeks', $konteks);
             } catch (\Throwable $e) {

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use Pencarian\Cache;
 use Pencarian\Konfig;
 use Pencarian\OpenSearch;
 use Pencarian\QueryBuilder;
@@ -47,15 +48,25 @@ $param = static function (string $k): string {
 };
 
 try {
-    $badan = QueryBuilder::bangun($param('q'), $param('genre'), $param('tag'), $param('hal'));
+    $p     = QueryBuilder::parameter($param('q'), $param('genre'), $param('tag'), $param('hal'));
+    $badan = QueryBuilder::bangun($p['q'], $p['genre'], $p['tag'], (string) $p['hal']);
 } catch (\InvalidArgumentException $e) {
     balas(400, 'error', $e->getMessage());
+}
+
+//Versi dibaca sebelum query ke OpenSearch. Bila indeks berubah di tengah jalan, hasil lama tersimpan di key versi lama yang sudah tidak dibaca siapa pun. Redis mati: versi null, pencarian tanpa cache.
+Cache::aktifkanPemutus();
+$versi = Cache::versi();
+$kunci = $versi !== null ? Cache::kunci($versi, $p) : null;
+if ($kunci !== null && ($tersimpan = Cache::ambil($kunci)) !== null) {
+    header('X-Cache-Layer: redis');
+    balas(200, 'sukses', 'Pencarian selesai.', $tersimpan);
 }
 
 try {
     [$kode, $respons] = $os->minta('POST', '/' . Konfig::INDEKS . '/_search', $badan);
     if ($kode === 404) {
-        // indeks belum ada: belum ada puisi yang bisa dicari, bukan kesalahan
+        //indeks belum ada: belum ada puisi yang bisa dicari, bukan kesalahan
         $respons = [];
     } elseif ($kode !== 200) {
         throw new \RuntimeException('OpenSearch menjawab HTTP ' . $kode);
@@ -66,9 +77,9 @@ try {
 }
 
 $hasil = QueryBuilder::hasil($respons);
+$isi   = ['data' => $hasil['data'], 'total' => $hasil['total'], 'hal' => $p['hal']];
+if ($kunci !== null && $kode === 200) {
+    Cache::simpan($kunci, $isi); 
+}
 header('X-Cache-Layer: opensearch');
-balas(200, 'sukses', 'Pencarian selesai.', [
-    'data'  => $hasil['data'],
-    'total' => $hasil['total'],
-    'hal'   => QueryBuilder::halaman($param('hal')),
-]);
+balas(200, 'sukses', 'Pencarian selesai.', $isi);

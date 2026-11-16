@@ -31,6 +31,7 @@ services:
       replicas: 2
     environment:
       OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis:6379
     depends_on:
       opensearch:
         condition: service_healthy
@@ -45,6 +46,7 @@ services:
       disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
     environment:
       OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis:6379
       AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
     depends_on:
       opensearch:

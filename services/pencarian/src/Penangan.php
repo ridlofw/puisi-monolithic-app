@@ -10,10 +10,6 @@ final class Penangan
     public const VISIBILITAS = ['publik', 'privat'];
     public const TAG_MAKS    = 20;
 
-    /**
-     * @return array<string, mixed>
-     * @throws \InvalidArgumentException bila bukan amplop kontrak yang sah
-     */
     public static function bacaAmplop(string $badan): array
     {
         $a = json_decode($badan, true);
@@ -128,12 +124,13 @@ final class Penangan
         Indeks::pastikan($os);
         [$kode, $badan] = $os->minta(
             'POST',
-            '/' . Konfig::INDEKS . '/_update/' . $r['id'],
+            '/' . Konfig::INDEKS . '/_update/' . $r['id'] . '?refresh=wait_for',
             ['doc' => $r['doc'], 'doc_as_upsert' => true]
         );
         if ($kode !== 200 && $kode !== 201) {
             throw new \RuntimeException('OpenSearch menolak update: HTTP ' . $kode . ' ' . json_encode($badan));
         }
-        return true;
+        //"noop": isinya sudah sama (event ganda), indeks tidak berubah dan cache tidak perlu dibuang
+        return ($badan['result'] ?? '') !== 'noop';
     }
 }

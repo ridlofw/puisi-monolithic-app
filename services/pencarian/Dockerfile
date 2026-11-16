@@ -4,6 +4,8 @@ FROM php:8.3-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends git unzip libonig-dev \
     && docker-php-ext-install -j"$(nproc)" mbstring sockets bcmath \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
     && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 
