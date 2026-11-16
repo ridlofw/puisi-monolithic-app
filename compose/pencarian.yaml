@@ -35,5 +35,20 @@ services:
       opensearch:
         condition: service_healthy
 
+  # mengonsumsi q.pencarian-indeks dan menjaga indeks tetap sinkron dengan event
+  search-consumer:
+    build: ./services/pencarian
+    profiles: ["pencarian", "semua"]
+    restart: unless-stopped
+    command: ["php", "bin/consumer.php"]
+    healthcheck:
+      disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
 volumes:
   opensearch-data:

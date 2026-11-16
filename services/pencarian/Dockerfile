@@ -3,7 +3,7 @@ FROM composer:2 AS composer
 FROM php:8.3-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends git unzip libonig-dev \
-    && docker-php-ext-install -j"$(nproc)" mbstring \
+    && docker-php-ext-install -j"$(nproc)" mbstring sockets bcmath \
     && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 

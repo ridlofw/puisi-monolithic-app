@@ -62,12 +62,7 @@ final class QueryBuilder
         return (int) $hal;
     }
 
-    /**
-     * Ubah respons _search menjadi bentuk kontrak: [{id, judul, penulis, genre, tag, potongan}].
-     *
-     * @param array<string, mixed> $respons
-     * @return array{data: list<array<string, mixed>>, total: int}
-     */
+    //Ubah respons dari _search menjadi bentuk kontrak: [{id, judul, penulis, genre, tag, potongan}].
     public static function hasil(array $respons): array
     {
         $total = $respons['hits']['total']['value'] ?? 0;
