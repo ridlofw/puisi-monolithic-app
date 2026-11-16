@@ -1,0 +1,8 @@
+[
+  {"id": 1, "judul": "Pagi di Ladang", "isi": "Pergi ke pasar membeli padi,\nPulang ke rumah membawa pinang,\nJika engkau berbaik hati,\nHidup bersama terasa tenang.", "penulis": "Penyair Uji", "genre": "pantun", "tag": ["ladang", "padi", "pinang"], "kategori": "alam", "visibilitas": "publik", "tgl_submit": "2026-11-01"},
+  {"id": 2, "judul": "Anak yang Berlari", "isi": "Ia lari menembus kabut pagi,\nmengejar matahari yang belum terbit,\nkakinya ringan seperti mimpi.", "penulis": "Sari", "genre": "puisi bebas", "tag": ["lari", "pagi", "mimpi"], "kategori": "kehidupan", "visibilitas": "publik", "tgl_submit": "2026-11-02"},
+  {"id": 3, "judul": "Surat untuk Ibu", "isi": "Ibu, aku rindu masakanmu,\nrindu tanganmu yang hangat,\nrindu pagi di dapurmu.", "penulis": "Budi", "genre": "syair", "tag": ["ibu", "rindu", "pagi"], "kategori": "cinta", "visibilitas": "publik", "tgl_submit": "2026-11-03"},
+  {"id": 4, "judul": "Catatan Rahasia tentang Lari", "isi": "Aku lari dari semua orang, ini draf pribadi yang belum boleh dibaca siapa pun.", "penulis": "Sari", "genre": "puisi bebas", "tag": ["lari", "rahasia"], "kategori": "kehidupan", "visibilitas": "privat", "tgl_submit": "2026-11-04"},
+  {"id": 5, "judul": "Tanpa Status", "isi": "Dokumen lama tanpa kolom visibilitas, tidak boleh bocor ke pencarian. Ada kata lari juga.", "penulis": "Anon", "genre": "puisi bebas", "tag": ["lari"], "kategori": "kehidupan", "tgl_submit": "2026-11-05"},
+  {"id": 6, "judul": "Kutip \"Garis\" / Miring", "isi": "Tanda kutip \" dan garis miring / ikut tersimpan, juga <script>alert(1)</script> di dalam isi.", "penulis": "Uji", "genre": "gurindam", "tag": ["simbol"], "kategori": "lainnya", "visibilitas": "publik", "tgl_submit": "2026-11-06"}
+]

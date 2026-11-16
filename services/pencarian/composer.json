@@ -1,0 +1,23 @@
+{
+    "name": "puisi/search-service",
+    "description": "Layanan pencarian puisi berbasis OpenSearch (REST lewat curl, tanpa SDK)",
+    "type": "project",
+    "require": {
+        "php": ">=8.3",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pencarian\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
