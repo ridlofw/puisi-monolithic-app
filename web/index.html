@@ -124,7 +124,32 @@
             </section>
 
             <!-- PENCARIAN PUISI, diisi pencarian.js -->
-            <section id="section-pencarian" style="display:none;"></section>
+            <section id="section-pencarian">
+                <h2>Cari Puisi</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cari-q">Kata kunci</label>
+                        <input type="search" id="cari-q" placeholder="mis. senja, ibu, berlari" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="cari-genre">Genre</label>
+                        <select id="cari-genre">
+                            <option value="">Semua genre</option>
+                            <option value="pantun">Pantun</option>
+                            <option value="syair">Syair</option>
+                            <option value="gurindam">Gurindam</option>
+                            <option value="puisi bebas">Puisi bebas</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cari-tag">Tag</label>
+                        <input type="text" id="cari-tag" placeholder="mis. pelabuhan" autocomplete="off">
+                    </div>
+                </div>
+                <p id="cari-status" class="status-preview" aria-live="polite"></p>
+                <div id="cari-hasil" class="cari-hasil"></div>
+                <div id="cari-halaman" class="cari-halaman"></div>
+            </section>
 
             <!-- DAFTAR PUISI -->
             <section id="section-daftar-puisi">

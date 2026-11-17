@@ -1,3 +1,56 @@
 # search-service dan OpenSearch. Pemilik: Evan
 # setiap service diberi profiles: ["pencarian", "semua"], lihat kontrak/README.md
-services: {}
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: ["pencarian", "semua"]
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"       # hanya untuk lokal
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  search-service:
+    build: ./services/pencarian
+    profiles: ["pencarian", "semua"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis:6379
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  # mengonsumsi q.pencarian-indeks dan menjaga indeks tetap sinkron dengan event
+  search-consumer:
+    build: ./services/pencarian
+    profiles: ["pencarian", "semua"]
+    restart: unless-stopped
+    command: ["php", "bin/consumer.php"]
+    healthcheck:
+      disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis:6379
+      AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+volumes:
+  opensearch-data:
