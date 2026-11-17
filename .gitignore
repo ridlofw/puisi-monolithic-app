@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 vendor/
 node_modules/
+.phpunit.result.cache
 
 # hasil Text-to-Speech dan model suara
 *.mp3
