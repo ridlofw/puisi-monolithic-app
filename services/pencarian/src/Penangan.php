@@ -61,10 +61,11 @@ final class Penangan
                 ?? self::tanggal($amplop['terjadi_pada'] ?? null)
                 ?? gmdate('Y-m-d'),
         ];
-        //tanpa nilai yang sah, kolom tidak ditulis: dokumen baru tetap tersembunyi, dokumen lama tidak berubah
+        //tanpa nilai, kolom tidak ditulis (publik). Nilai selain publik atau privat dianggap privat
         $v = $data['visibilitas'] ?? null;
-        if (is_string($v) && in_array($v, self::VISIBILITAS, true)) {
-            $doc['visibilitas'] = $v;
+        if ($v !== null) {
+            $v = is_string($v) ? mb_strtolower(trim($v)) : '';
+            $doc['visibilitas'] = in_array($v, self::VISIBILITAS, true) ? $v : 'privat';
         }
         return $doc;
     }

@@ -38,15 +38,25 @@ final class PenanganTest extends TestCase
         }
     }
 
-    public function testDibuatTanpaVisibilitasSahTidakMenulisVisibilitas(): void
+    public function testDibuatTanpaVisibilitasTidakMenulisVisibilitas(): void
     {
-        foreach ([null, 'rahasia', 'PUBLIK', true, ['publik']] as $v) {
-            $r = Penangan::rencana(self::amplop('puisi.dibuat', self::dibuat(['visibilitas' => $v])));
-            self::assertArrayNotHasKey('visibilitas', $r['doc'], 'nilai: ' . json_encode($v));
-        }
+        $r = Penangan::rencana(self::amplop('puisi.dibuat', self::dibuat(['visibilitas' => null])));
+        self::assertArrayNotHasKey('visibilitas', $r['doc']);
         $data = self::dibuat();
         unset($data['visibilitas']);
         self::assertArrayNotHasKey('visibilitas', Penangan::rencana(self::amplop('puisi.dibuat', $data))['doc']);
+    }
+
+    public function testVisibilitasDinormalkanDanNilaiAsingMenjadiPrivat(): void
+    {
+        $kasus = [
+            [' PUBLIK ', 'publik'], ['Privat', 'privat'],
+            ['rahasia', 'privat'], ['', 'privat'], [true, 'privat'], [['publik'], 'privat'],
+        ];
+        foreach ($kasus as [$masuk, $harapan]) {
+            $r = Penangan::rencana(self::amplop('puisi.dibuat', self::dibuat(['visibilitas' => $masuk])));
+            self::assertSame($harapan, $r['doc']['visibilitas'], 'nilai: ' . json_encode($masuk));
+        }
     }
 
     public function testDibuatPrivatDitulisApaAdanya(): void

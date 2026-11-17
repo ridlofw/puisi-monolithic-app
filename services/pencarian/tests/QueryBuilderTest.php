@@ -36,7 +36,7 @@ final class QueryBuilderTest extends TestCase
 
     public function testPuisiPrivatTidakPernahLolos(): void
     {
-        $publik = ['term' => ['visibilitas' => 'publik']];
+        $privat = [['term' => ['visibilitas' => 'privat']]];
         $kasus = [
             QueryBuilder::bangun(),
             QueryBuilder::bangun('x'),
@@ -45,7 +45,8 @@ final class QueryBuilderTest extends TestCase
             QueryBuilder::bangun('visibilitas:privat', 'privat', 'privat'),
         ];
         foreach ($kasus as $b) {
-            self::assertSame($publik, $b['query']['bool']['filter'][0]);
+            self::assertSame($privat, $b['query']['bool']['must_not']);
+            self::assertSame(['exists' => ['field' => 'tgl_submit']], $b['query']['bool']['filter'][0]);
         }
     }
 
