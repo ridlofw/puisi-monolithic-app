@@ -38,7 +38,7 @@ services:
     image: grafana/grafana:10.4.0
     container_name: puisi-grafana
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
