@@ -106,8 +106,37 @@ def tahap_idempotensi(lap, token):
               '10 POST bersamaan -> kode %s, %d id unik' % (kode, len(ids)))
 
 
+def tahap_pemutus_db(lap, token):
+    # pause membuat koneksi ke Router 1 menggantung sampai timeout 2 s, kasus yang ingin dihindari breaker
+    compose('pause', 'poem-db-router-1')
+    try:
+        durasi, kode = [], []
+        for i in range(20):
+            k, _, _, d = http('POST', '/api/puisi', puisi('Uji Pemutus %d %s' % (i, uuid.uuid4().hex[:6])), token,
+                              {'Idempotency-Key': str(uuid.uuid4())})
+            kode.append(k)
+            durasi.append(d)
+        # tanpa breaker setiap POST menunggu timeout Router 1; dengan breaker hanya 3 kegagalan per
+        # replika ditambah probe half-open setiap jeda 10 s yang lambat
+        lambat = sum(1 for d in durasi if d > 1.5)
+        akhir = sorted(durasi[-10:])[5]
+        lap.catat('pemutus-db-gagal-cepat', all(k == 202 for k in kode) and lambat <= 8 and akhir < 0.5,
+                  'Router 1 di-pause: 20 POST %s, %d dari 20 lambat > 1,5 s, median 10 terakhir %.0f ms'
+                  % ('202' if all(k == 202 for k in kode) else sorted(set(kode)), lambat, akhir * 1000))
+    finally:
+        compose('unpause', 'poem-db-router-1')
+    time.sleep(11)
+    for _ in range(4):
+        http('POST', '/api/puisi', puisi('Uji Pulih ' + uuid.uuid4().hex[:6]), token,
+             {'Idempotency-Key': str(uuid.uuid4())})
+    log = compose('logs', '--since', '40s', '--no-log-prefix', 'poem-service').stdout
+    lap.catat('pemutus-db-pulih', 'circuit breaker tertutup kembali' in log,
+              'Router 1 kembali, half-open lalu closed tercatat di log poem-service')
+
+
 TAHAP = {
     'idempotensi': tahap_idempotensi,
+    'pemutus-db': tahap_pemutus_db,
 }
 
 
