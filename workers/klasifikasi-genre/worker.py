@@ -9,6 +9,7 @@ Konfigurasi lewat environment:
 import json
 import logging
 import os
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,14 @@ EXCHANGE = 'puisi.events'
 MAKS_PERCOBAAN = 3
 # rabbitmq 4 tidak menghitung nack requeue ke x-delivery-limit, jadi percobaan dihitung di sini
 HEADER_PERCOBAAN = 'x-percobaan'
+JITTER = 0.2
+
+
+def jeda_ulang(percobaan, acak=random.uniform):
+    """Jeda sebelum percobaan ke-n: 1 s, 2 s, lalu maksimal 4 s, ditambah jitter 20 persen."""
+    # jitter menyebar retry massal agar tidak menghantam layanan yang baru pulih secara serentak
+    dasar = min(2 ** max(percobaan - 2, 0), 4)
+    return dasar * acak(1 - JITTER, 1 + JITTER)
 
 
 class LogJson(logging.Formatter):
@@ -130,8 +139,7 @@ def jalankan():
                         type=routing_key))
 
             def ulangi(body, props, percobaan):
-                # jeda pendek agar gangguan sesaat, misalnya basis data restart, sempat pulih
-                time.sleep(min(2 ** (percobaan - 2), 4))
+                time.sleep(jeda_ulang(percobaan))
                 headers = dict(props.headers or {})
                 headers[HEADER_PERCOBAAN] = percobaan
                 ch.basic_publish(

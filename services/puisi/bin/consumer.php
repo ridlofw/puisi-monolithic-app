@@ -13,6 +13,7 @@ use Puisi\Konfig;
 use Puisi\Log;
 use Puisi\Metrik;
 use Puisi\PuisiRepo;
+use Puisi\Ulang;
 
 putenv('NAMA_LAYANAN=poem-consumer');
 $_ENV['NAMA_LAYANAN'] = 'poem-consumer';
@@ -87,8 +88,7 @@ while (true) {
 
                 try {
                     $percobaanBerikut = $percobaan + 1;
-                    $jedaDetik        = min(1 << max(0, $percobaanBerikut - 2), 4);
-                    sleep($jedaDetik);
+                    usleep(Ulang::jedaMikro($percobaanBerikut));
 
                     $headers[$headerCoba] = $percobaanBerikut;
                     $propertiBaru = [
