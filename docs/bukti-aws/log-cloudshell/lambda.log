@@ -1,0 +1,71 @@
+================ siapkan-gambar 2026-11-23T13:06:28Z ================
+region : us-east-1    akun: <akun>
+
+==== 1/5 Bucket S3 ====
+bucket puisi-gambar-439188-12765 dibuat
+[OK] akses publik, bucket policy baca-publik, dan static website hosting terpasang
+
+==== 2/5 Fungsi Lambda (puisi-gambar) ====
+=== memasang dependensi dan membuat function.zip ===
+npm warn deprecated phin@3.7.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
+added 117 packages, and audited 118 packages in 12s
+
+11 packages are looking for funding
+  run `npm fund` for details
+
+4 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.2.3
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+npm notice To update run: npm install -g npm@12.2.3
+npm notice
+-rw-r--r--. 1 cloudshell-user cloudshell-user 19M Nov 23 13:06 function.zip
+=== membuat fungsi puisi-gambar (nodejs24.x, role arn:aws:iam::<akun>:role/LabRole) ===
+=== Function URL (auth NONE, dipanggil CloudFront dari internet) ===
+
+Selesai.
+  Function URL : https://xgeq2ms5ubczjhauamue44kdsa0vasfs.lambda-url.us-east-1.on.aws/
+  Uji preview  : curl -s -o /tmp/uji.jpg -w '%{http_code}\n' "https://xgeq2ms5ubczjhauamue44kdsa0vasfs.lambda-url.us-east-1.on.aws/?action=preview&template=latar1.jpeg&judul=Uji&penulis=Ridlo&kutipan=halo"
+  Lanjut       : deploy/lambda/README.md (CloudFront, lalu CDN_URL untuk image gateway)
+
+==== 3/5 Berkas latar di S3 ====
+nama berkas yang dipakai web/js/api.js: latar1.jpeg latar2.jpeg latar3.jpeg latar5.jpeg 
+[PERHATIAN] berkas latar dari dosen tidak lengkap di /home/cloudshell-user/latar.
+            Dibuatkan PENGGANTI SEMENTARA (warna polos) supaya seluruh alur bisa diuji.
+            Ganti nanti dengan berkas dosen: letakkan di /home/cloudshell-user/latar lalu jalankan skrip ini lagi.
+[OK] diunggah: latar1.jpeg
+[OK] diunggah: latar2.jpeg
+[OK] diunggah: latar3.jpeg
+[OK] diunggah: latar5.jpeg
+
+==== 4/5 Uji fungsi Lambda langsung ====
+[OK] 200 image/jpeg  <- https://xgeq2ms5ubczjhauamue44kdsa0vasfs.lambda-url.us-east-1.on.aws/fungsi
+
+==== 5/5 CloudFront ====
+origin S3 website : puisi-gambar-439188-12765.s3-website-us-east-1.amazonaws.com
+origin Lambda URL : xgeq2ms5ubczjhauamue44kdsa0vasfs.lambda-url.us-east-1.on.aws
+kebijakan cache puisi-CacheWithQueryString dibuat
+kebijakan: cache-S3=658327ea-f89d-4fab-a63d-7e88639e58f6  cache-fungsi=fe442cfb-b0ee-47dd-81e2-8dd0d6b4437c  origin-request=b689b0a8-53d0-40ab-baf2-68738e2966ac
+distribusi E3SX6Z493WGE2R dibuat (d34kjemttl944o.cloudfront.net)
+menunggu CloudFront selesai (biasanya 3 sampai 15 menit; jangan ditutup)...
+
+==== Uji lewat CloudFront ====
+[OK] 200 image/jpeg  <- https://d34kjemttl944o.cloudfront.net/fungsi
+[OK] 200 image/jpeg  <- https://d34kjemttl944o.cloudfront.net/latar1.jpeg
+
+================ RINGKASAN ================
+bucket     : puisi-gambar-439188-12765
+fungsi     : puisi-gambar
+distribusi : E3SX6Z493WGE2R
+uji CloudFront lulus: 2 dari 2
+
+CDN_URL=https://d34kjemttl944o.cloudfront.net
+
+Dipakai di Fase 2 (sebelum membangun image gateway):   export CDN_URL=https://d34kjemttl944o.cloudfront.net
+INGAT: latar saat ini PENGGANTI polos. Ganti dengan berkas dosen: taruh di /home/cloudshell-user/latar lalu jalankan ulang skrip ini.

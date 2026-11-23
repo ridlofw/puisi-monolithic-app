@@ -1,0 +1,1140 @@
+# =============================================================================
+# deploy/swarm/stack.yaml  -  aplikasi puisi di BANYAK server (Docker Swarm)
+#
+# Sumber kebenaran: hasil `docker compose --profile semua config` (compose.yaml +
+# compose/*.yaml). Berkas ini TIDAK mengubah fragmen Compose siapa pun.
+#
+# STATUS: DIJALANKAN di AWS sandbox 23 Nov 2026 (9 server t3.small): 38 layanan penuh, uji_e2e.py 10/10. Satu perbaikan lahir dari
+#         hasil itu (healthcheck OpenSearch, lihat komentarnya). Di server 2 GiB pakai juga deploy/aws/override-9server.yaml.
+#         Catatan lengkap: docs/LAPORAN-EKSPERIMEN-AWS.md. Jangan menyebut "bebas SPOF" (lihat "YANG MASIH TUNGGAL" di bawah).
+#
+# PEMULA: jangan mulai dari berkas ini. Ikuti docs/PANDUAN-DEPLOY-AWS.md; konsep dasarnya ada di deploy/swarm/panduan/ (dokumen 1 dan 2).
+#
+# Cara pakai (di server manager Swarm, dari akar repositori):
+#   docker stack deploy -c deploy/swarm/stack.yaml --with-registry-auth puisi
+#
+# -----------------------------------------------------------------------------
+# SATU KELOMPOK SERVER (POOL) UNTUK SETIAP MICROSERVICE
+#
+#   Setiap microservice bisa punya server sendiri. Kegagalan satu kelompok tidak menyentuh
+#   kelompok lain, dan masing-masing bisa ditambah servernya sendiri-sendiri.
+#
+#   kunci pool      pemilik  isi                                                  server minimal
+#   --------------  -------  ---------------------------------------------------  --------------
+#   infra           Pison    gateway, RabbitMQ (3 node), Redis                    3
+#   auto-tagging    Pison    auto-tagging                                         2
+#   puisi           Ridlo    poem-service, relay, consumer, poem-db (3) + router  3
+#   genre           Ridlo    klasifikasi-genre                                    2
+#   auth            Ifham    auth-service, auth-db (3) + router                   3
+#   tts             Ifham    text-to-speech, tts-db (3) + router, SeaweedFS       3
+#   pencarian       Evan     search-service, search-consumer, OpenSearch (3)      3
+#   emosi           Ray      analisis-emosi                                       2
+#                                                                                 -- 21 bila dipisah penuh
+#
+#   Singkatan pemilik (skrip/beri-label.sh): pison=infra+auto-tagging, ridlo=puisi+genre,
+#   ifham=auth+tts, evan=pencarian, ray=emosi. Memakai singkatan pemilik, kelompok yang
+#   digabung berbagi server: 14 server minimal. Dipisah per microservice: 21.
+#
+#   Label node (satu server boleh punya BANYAK label pool; berkas ini tidak berubah):
+#     puisi.pool.<kunci>=true    server ini milik microservice itu (kunci pada tabel)
+#     puisi.slot=1|2|3           posisi node klaster di server itu (untuk layanan berdata)
+#     puisi.audio=true           server tempat SeaweedFS (di pool tts)
+#
+#   Layanan TANPA data berjalan `mode: global` di pool pemiliknya: SATU salinan per server.
+#   Menambah server ke sebuah pool (join sebagai worker + label pool, TANPA label slot)
+#   menambah salinan layanan pemilik itu OTOMATIS, tanpa mengubah berkas ini.
+#   Layanan BERDATA (klaster) dipaku ke pool + slot. Setiap klaster memakai suara mayoritas
+#   (kuorum): tiga anggota menahan SATU kegagalan, jadi slot hanya 1, 2, 3.
+#   Tiga manajer Swarm: pilih tiga server di zona berbeda (lihat `swarm()` di deploy/aws/9server.sh: s1 sampai s3, zona a, b, c).
+#
+#   Contoh pool `puisi` yang dibesarkan: 3 server slot 1..3 (poem-db-N + layanan Ridlo) lalu
+#   server ke-4, ke-5 hanya berlabel puisi.pool.puisi=true: tiap server ekstra menambah satu
+#   poem-service, relay, dan consumer. Data tetap di 3 server.
+#
+#   Sedikit server (sandbox membatasi jumlah): beri SATU server beberapa label pool sekaligus.
+#   Pada 3 server berlabel semua pool + slot 1..3, hasilnya sama dengan "semua jadi satu".
+#   Tabel susunan 21 / 14 / 9 / 3 server ada di deploy/swarm/README.md.
+#
+#   ./skrip/beri-label.sh <nama-node> <kunci|singkatan>[,...] [slot] [audio]  memasang label
+#   ./skrip/cek.sh                                                          memeriksa label tiap pool
+#
+# -----------------------------------------------------------------------------
+# YANG MASIH TUNGGAL (satu salinan; jujur, jangan ditulis "bebas SPOF"):
+#   seaweedfs   -> fitur audio. Data di disk SATU server (puisi.audio). Bila server itu mati,
+#                  audio berhenti sampai server hidup lagi. Mengurangi dampaknya:
+#                  stack.efs.yaml (data di Amazon EFS, Swarm menjalankannya di server lain).
+#   redis       -> hanya cache. Mati = lebih lambat, bukan henti layanan (satu salinan,
+#                  dijadwalkan ulang oleh Swarm).
+#   Router MySQL mem-bootstrap dari SATU node; lihat USULAN-PEMILIK.md (Ridlo).
+#   Dua server mati sekaligus di pool yang memegang klaster = kuorum klaster itu hilang (penulisan gagal).
+#
+# TIDAK DIMASUKKAN: observability (Prometheus/Grafana/Loki: butuh docker.sock dan bind
+# mount per server), legacy, templat, worker gambar-kutipan (belum ada di Compose
+# maupun rabbitmq/definitions.json). Gambar kutipan memakai AWS Lambda: deploy/lambda/.
+#
+# -----------------------------------------------------------------------------
+# BATASAN SWARM yang ditangani di sini:
+#  * tidak ada build:, include:, profiles:, depends_on bersyarat. Image dibangun lebih
+#    dulu (skrip/bangun-image.sh). Urutan start diganti restart_policy yang terus
+#    mencoba lagi, dan job init (replicated-job) untuk klaster MySQL dan bucket audio.
+#  * tidak ada bind mount lintas server. Berkas konfigurasi masuk lewat `configs:`,
+#    folder web/ dan gateway/ dimasukkan ke image gateway (Dockerfile.gateway).
+#  * Swarm MEMBUNUH task yang healthcheck-nya gagal (Compose hanya menandai). Karena
+#    itu override healthcheck milik relay/consumer dan search-consumer dibawa serta.
+#  * update_config.order tetap stop-first (bawaan): start-first pada layanan
+#    berdisk akan menjalankan dua MySQL/RabbitMQ pada satu direktori data.
+#  * `docker stack deploy` tidak membaca berkas .env. Variabel diberi nilai bawaan
+#    atau diekspor di shell: REGISTRY, TAG, RABBITMQ_COOKIE.
+#  * configs dan secrets tidak bisa diubah isinya. Bila isi berkas berubah, hapus
+#    stack lalu deploy ulang (atau ganti namanya).
+# =============================================================================
+
+x-amqp: &amqp "amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F"
+
+# alamat database dan Redis milik poem-service, relay, consumer (sama dengan compose/puisi.yaml)
+x-env-poem: &env-poem
+  AMQP_URLS: *amqp
+  DB_NAME: poem_db
+  DB_USER: poem
+  DB_PASS: poem
+  DB_READ_HOSTS: "poem-db-router-1:6447,poem-db-router-2:6447,poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306"
+  DB_WRITE_HOSTS: "poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306"
+  REDIS_HOSTS: "redis:6379"
+  SUMBER_WAJIB: "auto-tagging,klasifikasi-genre"
+
+# Terus mencoba lagi tanpa batas. Inilah pengganti depends_on: layanan yang start
+# sebelum dependensinya siap akan gagal lalu dijadwal ulang sampai berhasil.
+x-ulang-terus: &ulang-terus
+  condition: any
+  delay: 10s
+
+# job: ulangi hanya bila gagal, berhenti setelah sukses
+x-ulang-job: &ulang-job
+  condition: on-failure
+  delay: 10s
+
+x-mysql-poem: &mysql-poem
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_HOST: "%"
+    MYSQL_ROOT_PASSWORD: poem
+  healthcheck:
+    test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppoem"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 180s       # start pertama dan pemulihan bisa lama; jangan dibunuh di tengah inisialisasi
+  stop_grace_period: 60s     # beri waktu MySQL keluar dari klaster dengan rapi
+  networks: [puisi]
+  configs:
+    - source: poem_init_sql
+      target: /docker-entrypoint-initdb.d/01-init.sql
+
+# Node klaster auth-db. Basis data dan pengguna `auth` dibuat oleh entrypoint image
+# (tanpa binlog, sama di tiap node); tabel dibuat sekali di PRIMARY oleh job init.
+x-mysql-auth: &mysql-auth
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_HOST: "%"
+    # Dipakai pada uji di laptop (klaster terbentuk, failover Primary kurang dari 1 detik).
+    # Penyambungan node ke-2 dan ke-3 tetap lewat `clone` (ada transaksi GTID liar dari
+    # penyiapan awal), dan `clone` me-restart MySQL: itu sebabnya restart_policy harus `any`.
+    MYSQL_INITDB_SKIP_TZINFO: "1"
+    MYSQL_DATABASE: auth_db
+    MYSQL_USER: auth
+    MYSQL_PASSWORD_FILE: /run/secrets/auth_db_password
+    MYSQL_ROOT_PASSWORD_FILE: /run/secrets/auth_db_root_password
+  healthcheck:
+    test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$(cat /run/secrets/auth_db_root_password)\""]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 180s
+  stop_grace_period: 60s
+  networks: [puisi]
+  secrets:
+    - auth_db_password
+    - auth_db_root_password
+  configs:
+    - source: mysql_klaster_cnf
+      target: /etc/mysql/conf.d/klaster.cnf
+
+# Node klaster tts-db (pola sama dengan auth).
+x-mysql-tts: &mysql-tts
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_HOST: "%"
+    MYSQL_INITDB_SKIP_TZINFO: "1"   # alasan: lihat x-mysql-auth
+    MYSQL_DATABASE: tts
+    MYSQL_USER: tts
+    MYSQL_PASSWORD_FILE: /run/secrets/tts_db_password
+    MYSQL_ROOT_PASSWORD_FILE: /run/secrets/tts_db_root_password
+  healthcheck:
+    test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$(cat /run/secrets/tts_db_root_password)\""]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 180s
+  stop_grace_period: 60s
+  networks: [puisi]
+  secrets:
+    - tts_db_password
+    - tts_db_root_password
+  configs:
+    - source: mysql_klaster_cnf
+      target: /etc/mysql/conf.d/klaster.cnf
+
+x-rabbit: &rabbit
+  image: rabbitmq:4-management
+  environment:
+    RABBITMQ_ERLANG_COOKIE: "${RABBITMQ_COOKIE:-puisi-cookie-lokal}"
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+    start_period: 60s
+  stop_grace_period: 60s
+  networks: [puisi]
+  configs:
+    - source: rabbitmq_conf
+      target: /etc/rabbitmq/rabbitmq.conf
+    - source: rabbitmq_plugins
+      target: /etc/rabbitmq/enabled_plugins
+    - source: rabbitmq_definisi
+      target: /etc/rabbitmq/definitions.json
+
+# Pengaturan bersama tiga node OpenSearch (klaster 3 node, replika indeks = 1).
+x-env-opensearch: &env-opensearch
+  cluster.name: puisi-cari
+  discovery.seed_hosts: "opensearch-1,opensearch-2,opensearch-3"
+  cluster.initial_cluster_manager_nodes: "opensearch-1,opensearch-2,opensearch-3"
+  network.host: "0.0.0.0"
+  DISABLE_SECURITY_PLUGIN: "true"
+  DISABLE_INSTALL_DEMO_CONFIG: "true"
+  OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+  # memory_lock dimatikan: butuh ulimit memlock, dan Swarm tidak menjamin mengaturnya.
+  # Bila true dan ulimit tidak ada, OpenSearch GAGAL start. Server punya swap 4 GiB (siapkan-node.sh).
+  bootstrap.memory_lock: "false"
+
+services:
+
+  # ===========================================================================
+  # PINTU MASUK
+  # ===========================================================================
+
+  # Satu gateway di SETIAP server pool infra (mode global), port 80 dibuka di server itu
+  # (mode host). Load balancer menunjuk ke port 80 semua server pool infra. Dengan mode host
+  # tidak ada routing mesh Swarm di jalur masuk, dan IP klien tidak diubah oleh Swarm.
+  gateway:
+    image: "${REGISTRY:-localhost:5000}/puisi-gateway:${TAG:-v1}"
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true"]
+      update_config:
+        parallelism: 1
+        delay: 15s
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # RABBITMQ  -  3 node quorum, masing-masing dipaku ke server berbeda di pool infra (slot 1, 2, 3)
+  # endpoint_mode dnsrr: nama rabbitmq-N menunjuk langsung ke task (bukan VIP).
+  # Itu perlu untuk penemuan antar-node Erlang dan menghindari pemutusan koneksi
+  # AMQP yang menganggur oleh VIP Swarm. Port management 15672 TIDAK dibuka ke luar.
+  # ===========================================================================
+
+  rabbitmq-1:
+    <<: *rabbit
+    hostname: rabbitmq-1
+    volumes:
+      - rabbitmq-1:/var/lib/rabbitmq
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  rabbitmq-2:
+    <<: *rabbit
+    hostname: rabbitmq-2
+    volumes:
+      - rabbitmq-2:/var/lib/rabbitmq
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  rabbitmq-3:
+    <<: *rabbit
+    hostname: rabbitmq-3
+    volumes:
+      - rabbitmq-3:/var/lib/rabbitmq
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # REDIS  -  cache murni. SATU salinan di server pool infra mana pun: bila servernya mati
+  # Swarm menjalankannya lagi di server pool infra lain (cache kosong). Selama itu aplikasi
+  # turun ke database (diuji di satu server: 'Redis mati' LULUS). Ini bukan Redis HA.
+  # Jangan menambah redis kedua ke REDIS_HOSTS, lihat USULAN-PEMILIK.md (Pison).
+  # ===========================================================================
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true"]
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # DATABASE PUISI (Ridlo)  -  InnoDB Cluster 3 node, tiap node di server pool puisi berbeda (slot 1, 2, 3)
+  # ===========================================================================
+
+  poem-db-1:
+    <<: *mysql-poem
+    hostname: poem-db-1
+    command:
+      - --server-id=101
+      - --report-host=poem-db-1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-1:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr   # Group Replication butuh nama yang menunjuk ke IP container sendiri, bukan VIP
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  poem-db-2:
+    <<: *mysql-poem
+    hostname: poem-db-2
+    command:
+      - --server-id=102
+      - --report-host=poem-db-2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-2:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  poem-db-3:
+    <<: *mysql-poem
+    hostname: poem-db-3
+    command:
+      - --server-id=103
+      - --report-host=poem-db-3
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-3:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  # JOB: membentuk (atau memulihkan) klaster. Berjalan sekali sampai sukses. Skripnya
+  # sendiri menunggu ketiga node (maks. sekitar 2 menit), bila gagal Swarm mengulang.
+  # Pengganti `depends_on: service_completed_successfully`. Untuk memulihkan klaster
+  # setelah mati total (docs/PANDUAN-DEPLOY-AWS.md bagian 8), jalankan:
+  #   docker service update --force puisi_poem-db-cluster-init
+  poem-db-cluster-init:
+    image: mysql:8.4
+    entrypoint: ["/bin/sh", "/cluster/init-cluster.sh"]
+    environment:
+      MYSQL_ROOT_PASSWORD: poem
+    healthcheck:
+      disable: true
+    networks: [puisi]
+    configs:
+      - source: poem_init_sql
+        target: /cluster/init.sql
+      - source: poem_init_cluster
+        target: /cluster/init-cluster.sh
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true"]
+      restart_policy: *ulang-job
+
+  # Router mem-bootstrap dari SATU node (MYSQL_HOST). Karena itu router-1 dan router-2
+  # dipaku ke server berbeda, masing-masing di server node asalnya. Sebelum klaster ada,
+  # bootstrap gagal dan Swarm mengulang tiap 10 detik. Bila router di-restart saat node
+  # asalnya mati, ia gagal terus sampai node itu hidup (batasan yang diketahui).
+  poem-db-router-1:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    hostname: poem-db-router-1
+    environment:
+      MYSQL_HOST: poem-db-1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: poem
+      MYSQL_CREATE_ROUTER_USER: "0"
+      MYSQL_INNODB_CLUSTER_MEMBERS: "3"
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  poem-db-router-2:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    hostname: poem-db-router-2
+    environment:
+      MYSQL_HOST: poem-db-2
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: poem
+      MYSQL_CREATE_ROUTER_USER: "0"
+      MYSQL_INNODB_CLUSTER_MEMBERS: "3"
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # LAYANAN PUISI (Ridlo)  -  satu salinan per server pool puisi
+  # ===========================================================================
+
+  poem-service:
+    image: "${REGISTRY:-localhost:5000}/puisi-poem:${TAG:-v1}"
+    environment:
+      <<: *env-poem
+      NAMA_LAYANAN: poem-service
+    secrets:
+      - jwt_secret
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true"]
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "8080"
+
+  poem-relay:
+    image: "${REGISTRY:-localhost:5000}/puisi-poem:${TAG:-v1}"
+    command: ["php", "bin/relay.php"]
+    environment:
+      <<: *env-poem
+      NAMA_LAYANAN: poem-relay
+      PORT_METRIK: "9100"
+    # image ini punya HEALTHCHECK HTTP; relay tidak punya server HTTP. Tanpa override
+    # ini Swarm akan membunuhnya berulang-ulang.
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true"]
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+  poem-consumer:
+    image: "${REGISTRY:-localhost:5000}/puisi-poem:${TAG:-v1}"
+    command: ["php", "bin/consumer.php"]
+    environment:
+      <<: *env-poem
+      NAMA_LAYANAN: poem-consumer
+      PORT_METRIK: "9100"
+      QUEUE_HASIL: q.puisi-hasil
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.puisi == true"]
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+  # ===========================================================================
+  # AUTH (Ifham)  -  auth-db InnoDB Cluster 3 node + 2 router; auth-service satu per server pool auth
+  # ===========================================================================
+
+  auth-db-1:
+    <<: *mysql-auth
+    hostname: auth-db-1
+    command: ["--server-id=201", "--report-host=auth-db-1"]
+    volumes:
+      - auth-db-1:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  auth-db-2:
+    <<: *mysql-auth
+    hostname: auth-db-2
+    command: ["--server-id=202", "--report-host=auth-db-2"]
+    volumes:
+      - auth-db-2:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  auth-db-3:
+    <<: *mysql-auth
+    hostname: auth-db-3
+    command: ["--server-id=203", "--report-host=auth-db-3"]
+    volumes:
+      - auth-db-3:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  # JOB: membentuk klaster auth dan membuat tabel `users` di PRIMARY. Pulihkan setelah mati total:
+  #   docker service update --force puisi_auth-db-cluster-init
+  auth-db-cluster-init:
+    image: mysql:8.4
+    entrypoint: ["/bin/sh", "/cluster/init-innodb-cluster.sh"]
+    environment:
+      CLUSTER_NAME: auth_cluster
+      NODES: "auth-db-1 auth-db-2 auth-db-3"
+      ROOT_PASSWORD_FILE: /run/secrets/auth_db_root_password
+      SCHEMA_FILE: /cluster/skema.sql
+    healthcheck:
+      disable: true
+    secrets:
+      - auth_db_root_password
+    networks: [puisi]
+    configs:
+      - source: init_innodb_cluster
+        target: /cluster/init-innodb-cluster.sh
+      - source: auth_init_sql
+        target: /cluster/skema.sql
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true"]
+      restart_policy: *ulang-job
+
+  # Satu layanan, 2 replika di server pool auth atau tts berbeda, dengan satu alamat tetap (VIP):
+  # auth-db-router:6446 (tulis/baca ke PRIMARY). auth-service cukup mengenal satu DB_HOST.
+  # Sandi root dibaca dari secret lewat pembungkus entrypoint (env MYSQL_PASSWORD tidak
+  # punya versi _FILE). `/run.sh mysqlrouter` adalah entrypoint dan perintah bawaan image
+  # (diperiksa dengan docker image inspect, dan terbukti di Compose; belum di Swarm).
+  auth-db-router:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    entrypoint: ["/bin/sh", "-c", "export MYSQL_PASSWORD=\"$$(cat /run/secrets/auth_db_root_password)\"; exec /run.sh mysqlrouter"]
+    environment:
+      MYSQL_HOST: auth-db-1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_CREATE_ROUTER_USER: "0"
+      MYSQL_INNODB_CLUSTER_MEMBERS: "3"
+    # Image router tidak punya HEALTHCHECK. Tanpa ini Swarm tetap mengirim klien ke replika yang baru
+    # di-restart dan belum selesai bootstrap. Port 6446 hanya mendengarkan setelah bootstrap selesai
+    # (diuji: tidak sehat saat bootstrap, sehat setelah klaster ada).
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6446' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    secrets:
+      - auth_db_root_password
+    networks: [puisi]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true"]
+        max_replicas_per_node: 1
+      restart_policy: *ulang-terus
+
+  auth-service:
+    image: "${REGISTRY:-localhost:5000}/puisi-auth:${TAG:-v1}"
+    environment:
+      DB_HOST: auth-db-router
+      DB_PORT: "6446"
+      DB_NAME: auth_db
+      DB_USER: auth
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets:
+      - auth_db_password
+      - jwt_secret
+    # /sehat milik auth-service menjalankan SELECT 1 ke database. Swarm membunuh task yang
+    # tidak sehat, jadi saat Primary berpindah (failover) semua salinan bisa gagal bersamaan
+    # lalu dijalankan ulang. retries 12 (sekitar 2 menit, Compose: 6) memberi napas.
+    # Usulan Ifham: pisahkan /sehat (proses hidup) dan /siap (database terjangkau).
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/sehat') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 120s
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.auth == true"]
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # WORKER ANTREAN  -  RabbitMQ menahan pesan selama worker mati
+  # Satu salinan per server di pool pemiliknya. Semua worker idempoten (kontrak/README.md).
+  # ===========================================================================
+
+  auto-tagging:
+    image: "${REGISTRY:-localhost:5000}/puisi-auto-tagging:${TAG:-v1}"
+    environment:
+      AMQP_URLS: *amqp
+      NAMA_WORKER: auto-tagging
+      PORT_METRIK: "9100"
+      QUEUE: q.auto-tagging
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.auto-tagging == true"]
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+  klasifikasi-genre:
+    image: "${REGISTRY:-localhost:5000}/puisi-klasifikasi-genre:${TAG:-v1}"
+    environment:
+      AMQP_URLS: *amqp
+      NAMA_WORKER: klasifikasi-genre
+      PORT_METRIK: "9100"
+      QUEUE: q.klasifikasi-genre
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.genre == true"]
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+  # USULAN: di Compose hanya 1 replika. Di sini satu per server pool emosi. Pemilik (Ray)
+  # perlu menyetujui, lihat USULAN-PEMILIK.md. Hasilnya disimpan per sumber (upsert).
+  analisis-emosi:
+    image: "${REGISTRY:-localhost:5000}/puisi-analisis-emosi:${TAG:-v1}"
+    environment:
+      AMQP_URLS: *amqp
+      NAMA_WORKER: analisis-emosi
+      PORT_METRIK: "9100"
+      QUEUE: q.analisis-emosi
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.emosi == true"]
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+  # ===========================================================================
+  # PENCARIAN (Evan)  -  OpenSearch 3 node (satu per server pool pencarian) di belakang HAProxy
+  # ===========================================================================
+
+  opensearch-1:
+    image: opensearchproject/opensearch:2.17.1
+    hostname: opensearch-1
+    environment:
+      <<: *env-opensearch
+      node.name: opensearch-1
+      network.publish_host: opensearch-1   # alamat yang diumumkan ke node lain: IP overlay, bukan IP docker_gwbridge
+    healthcheck:
+      # HANYA memeriksa bahwa HTTP node hidup (GET / menjawab 200 walau klaster belum terbentuk). JANGAN diganti /_cluster/health:
+      # di Swarm, nama DNS sebuah task baru didaftarkan setelah task itu SEHAT, padahal klaster baru terbentuk bila ketiga node
+      # saling menerjemahkan nama. Dengan /_cluster/health semua node menunggu satu sama lain selamanya (terbukti di AWS 23 Nov 2026:
+      # "UnknownHostException: opensearch-2"). Pemeriksaan klaster yang sebenarnya dilakukan HAProxy (layanan `opensearch`).
+      test: ["CMD-SHELL", "curl -fs -o /dev/null http://localhost:9200/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    stop_grace_period: 60s
+    volumes:
+      - opensearch-data-1:/usr/share/opensearch/data
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  opensearch-2:
+    image: opensearchproject/opensearch:2.17.1
+    hostname: opensearch-2
+    environment:
+      <<: *env-opensearch
+      node.name: opensearch-2
+      network.publish_host: opensearch-2   # alamat yang diumumkan ke node lain: IP overlay, bukan IP docker_gwbridge
+    healthcheck:
+      # HANYA memeriksa bahwa HTTP node hidup (GET / menjawab 200 walau klaster belum terbentuk). JANGAN diganti /_cluster/health:
+      # di Swarm, nama DNS sebuah task baru didaftarkan setelah task itu SEHAT, padahal klaster baru terbentuk bila ketiga node
+      # saling menerjemahkan nama. Dengan /_cluster/health semua node menunggu satu sama lain selamanya (terbukti di AWS 23 Nov 2026:
+      # "UnknownHostException: opensearch-2"). Pemeriksaan klaster yang sebenarnya dilakukan HAProxy (layanan `opensearch`).
+      test: ["CMD-SHELL", "curl -fs -o /dev/null http://localhost:9200/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    stop_grace_period: 60s
+    volumes:
+      - opensearch-data-2:/usr/share/opensearch/data
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  opensearch-3:
+    image: opensearchproject/opensearch:2.17.1
+    hostname: opensearch-3
+    environment:
+      <<: *env-opensearch
+      node.name: opensearch-3
+      network.publish_host: opensearch-3   # alamat yang diumumkan ke node lain: IP overlay, bukan IP docker_gwbridge
+    healthcheck:
+      # HANYA memeriksa bahwa HTTP node hidup (GET / menjawab 200 walau klaster belum terbentuk). JANGAN diganti /_cluster/health:
+      # di Swarm, nama DNS sebuah task baru didaftarkan setelah task itu SEHAT, padahal klaster baru terbentuk bila ketiga node
+      # saling menerjemahkan nama. Dengan /_cluster/health semua node menunggu satu sama lain selamanya (terbukti di AWS 23 Nov 2026:
+      # "UnknownHostException: opensearch-2"). Pemeriksaan klaster yang sebenarnya dilakukan HAProxy (layanan `opensearch`).
+      test: ["CMD-SHELL", "curl -fs -o /dev/null http://localhost:9200/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    stop_grace_period: 60s
+    volumes:
+      - opensearch-data-3:/usr/share/opensearch/data
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  # Pintu masuk http://opensearch:9200 (OPENSEARCH_URL milik search-* tidak diubah).
+  # HAProxy membagi ke opensearch-1..3 dan melewati node yang mati.
+  opensearch:
+    image: haproxy:2.9-alpine
+    healthcheck:
+      disable: true
+    networks: [puisi]
+    configs:
+      - source: opensearch_haproxy
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true"]
+      restart_policy: *ulang-terus
+
+  # Kode pencarian (services/pencarian/src/Indeks.php, milik Evan) membuat indeks dengan
+  # number_of_replicas = 0. Pada klaster 3 node itu berarti SATU salinan per shard: node mati,
+  # data pencarian hilang. Pengaturan ini dinamis, jadi tanpa mengubah kode Evan, layanan
+  # kecil ini menyetelnya ke 1 (dua salinan) tiap 30 detik, termasuk bila indeks dibuat ulang.
+  # PUT ke indeks yang belum ada hanya mengembalikan 404 (tidak berbahaya).
+  opensearch-replika:
+    image: opensearchproject/opensearch:2.17.1
+    entrypoint: ["/bin/sh", "-c", "while true; do curl -s -o /dev/null -X PUT -H 'Content-Type: application/json' -d '{\"index\":{\"number_of_replicas\":1}}' http://opensearch:9200/puisi/_settings; sleep 30; done"]
+    healthcheck:
+      disable: true
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true"]
+      restart_policy: *ulang-terus
+
+  # search-service menunggu OpenSearch sampai 2 menit saat start (bin/siapkan_indeks.php).
+  # Bila OpenSearch lebih lambat dari itu dan indeks belum ada:
+  #   docker service update --force puisi_search-service
+  search-service:
+    image: "${REGISTRY:-localhost:5000}/puisi-pencarian:${TAG:-v1}"
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: "redis:6379"
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true"]
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy: *ulang-terus
+
+  # USULAN: di Compose hanya 1 replika. Di sini satu per server pool pencarian. Penangan.php
+  # memakai doc_as_upsert dan komentarnya menyatakan urutan event tidak dijamin, jadi
+  # banyak consumer aman menurut kode, tetapi BELUM diuji. Evan perlu menyetujui.
+  search-consumer:
+    image: "${REGISTRY:-localhost:5000}/puisi-pencarian:${TAG:-v1}"
+    command: ["php", "bin/consumer.php"]
+    environment:
+      AMQP_URLS: *amqp
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: "redis:6379"
+    healthcheck:
+      disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.pencarian == true"]
+      restart_policy: *ulang-terus
+
+  # ===========================================================================
+  # TEXT-TO-SPEECH (Ifham)  -  tts-db klaster 3 node; seaweedfs MASIH TUNGGAL
+  # ===========================================================================
+
+  tts-db-1:
+    <<: *mysql-tts
+    hostname: tts-db-1
+    command: ["--server-id=301", "--report-host=tts-db-1"]
+    volumes:
+      - tts-db-1:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  tts-db-2:
+    <<: *mysql-tts
+    hostname: tts-db-2
+    command: ["--server-id=302", "--report-host=tts-db-2"]
+    volumes:
+      - tts-db-2:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  tts-db-3:
+    <<: *mysql-tts
+    hostname: tts-db-3
+    command: ["--server-id=303", "--report-host=tts-db-3"]
+    volumes:
+      - tts-db-3:/var/lib/mysql
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  # JOB: membentuk klaster tts dan membuat tabel `job` dan `event_outbox` di PRIMARY.
+  #   docker service update --force puisi_tts-db-cluster-init
+  tts-db-cluster-init:
+    image: mysql:8.4
+    entrypoint: ["/bin/sh", "/cluster/init-innodb-cluster.sh"]
+    environment:
+      CLUSTER_NAME: tts_cluster
+      NODES: "tts-db-1 tts-db-2 tts-db-3"
+      ROOT_PASSWORD_FILE: /run/secrets/tts_db_root_password
+      SCHEMA_FILE: /cluster/skema.sql
+      SCHEMA_DB: tts
+    healthcheck:
+      disable: true
+    secrets:
+      - tts_db_root_password
+    networks: [puisi]
+    configs:
+      - source: init_innodb_cluster
+        target: /cluster/init-innodb-cluster.sh
+      - source: tts_schema_sql
+        target: /cluster/skema.sql
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true"]
+      restart_policy: *ulang-job
+
+  # Alamat tetap tts-db-router:6446, pola sama dengan auth-db-router.
+  tts-db-router:
+    image: container-registry.oracle.com/mysql/community-router:8.4
+    entrypoint: ["/bin/sh", "-c", "export MYSQL_PASSWORD=\"$$(cat /run/secrets/tts_db_root_password)\"; exec /run.sh mysqlrouter"]
+    environment:
+      MYSQL_HOST: tts-db-1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_CREATE_ROUTER_USER: "0"
+      MYSQL_INNODB_CLUSTER_MEMBERS: "3"
+    # Image router tidak punya HEALTHCHECK. Tanpa ini Swarm tetap mengirim klien ke replika yang baru
+    # di-restart dan belum selesai bootstrap. Port 6446 hanya mendengarkan setelah bootstrap selesai
+    # (diuji: tidak sehat saat bootstrap, sehat setelah klaster ada).
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6446' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    secrets:
+      - tts_db_root_password
+    networks: [puisi]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true"]
+        max_replicas_per_node: 1
+      restart_policy: *ulang-terus
+
+  # SPOF YANG TERSISA. Satu proses SeaweedFS (master, volume, filer, S3 jadi satu) dengan
+  # data di /data. Dipaku ke server berlabel puisi.audio=true supaya tidak pernah dijadwalkan
+  # ke server dengan volume KOSONG. Memakai stack.efs.yaml (data di Amazon EFS) boleh
+  # memberi label itu ke ketiga server pool tts, sehingga Swarm bisa memindahkannya sendiri.
+  # Alasan tidak diklasterkan: lihat USULAN-PEMILIK.md (Ifham).
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.53
+    command: ["server", "-s3", "-s3.config=/run/secrets/seaweed_s3_config"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    secrets:
+      - seaweed_s3_config
+    volumes:
+      - seaweedfs-data:/data
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true", "node.labels.puisi.audio == true"]
+      restart_policy: *ulang-terus
+
+  # JOB: membuat bucket `audio`. Menunggu SeaweedFS sendiri (maks. sekitar 2 menit),
+  # bila gagal Swarm mengulang. Pengganti depends_on tts-audio-init.
+  tts-audio-init:
+    image: "${REGISTRY:-localhost:5000}/puisi-tts:${TAG:-v1}"
+    command: ["python", "init_storage.py"]
+    environment:
+      S3_BUCKET: audio
+      S3_ENDPOINT: http://seaweedfs:8333
+      TTS_INIT_STORAGE: "1"
+    healthcheck:
+      disable: true
+    secrets:
+      - s3_init_access_key
+      - s3_init_secret_key
+    networks: [puisi]
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true"]
+      restart_policy: *ulang-job
+
+  text-to-speech:
+    image: "${REGISTRY:-localhost:5000}/puisi-tts:${TAG:-v1}"
+    command: ["python", "worker.py"]
+    environment:
+      AMQP_URLS: *amqp
+      DB_HOST: tts-db-router
+      DB_PORT: "6446"
+      DB_NAME: tts
+      DB_USER: tts
+      NAMA_WORKER: text-to-speech
+      PORT_METRIK: "9100"
+      QUEUE: q.text-to-speech
+      S3_BUCKET: audio
+      S3_ENDPOINT: http://seaweedfs:8333
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+    secrets:
+      - tts_db_password
+      - s3_access_key
+      - s3_secret_key
+    networks: [puisi]
+    deploy:
+      mode: global
+      placement:
+        constraints: ["node.labels.puisi.pool.tts == true"]
+      restart_policy: *ulang-terus
+      labels:
+        metrics.scrape: "true"
+        metrics.port: "9100"
+
+networks:
+  puisi:
+    driver: overlay
+    attachable: true   # supaya `docker run --network puisi_puisi ...` bisa dipakai untuk memeriksa. Tidak dienkripsi (enkripsi butuh ESP/protokol 50 di Security Group)
+
+volumes:
+  poem-db-1:
+  poem-db-2:
+  poem-db-3:
+  auth-db-1:
+  auth-db-2:
+  auth-db-3:
+  tts-db-1:
+  tts-db-2:
+  tts-db-3:
+  rabbitmq-1:
+  rabbitmq-2:
+  rabbitmq-3:
+  seaweedfs-data:
+  opensearch-data-1:
+  opensearch-data-2:
+  opensearch-data-3:
+
+# Berkas rahasia dibuat dulu di server manager: python3 scripts/siapkan_rahasia.py,
+# siapkan_rahasia_auth.py, siapkan_rahasia_tts.py. Folder secrets/ tidak masuk git.
+secrets:
+  jwt_secret:
+    file: ../../secrets/jwt_secret.txt
+  auth_db_password:
+    file: ../../secrets/auth_db_password.txt
+  auth_db_root_password:
+    file: ../../secrets/auth_db_root_password.txt
+  tts_db_password:
+    file: ../../secrets/tts_db_password.txt
+  tts_db_root_password:
+    file: ../../secrets/tts_db_root_password.txt
+  s3_access_key:
+    file: ../../secrets/s3_access_key.txt
+  s3_secret_key:
+    file: ../../secrets/s3_secret_key.txt
+  s3_init_access_key:
+    file: ../../secrets/s3_init_access_key.txt
+  s3_init_secret_key:
+    file: ../../secrets/s3_init_secret_key.txt
+  seaweed_s3_config:
+    file: ../../secrets/seaweedfs_s3.json
+
+configs:
+  rabbitmq_conf:
+    file: ../../rabbitmq/rabbitmq.conf
+  rabbitmq_plugins:
+    file: ../../rabbitmq/enabled_plugins
+  rabbitmq_definisi:
+    file: ../../rabbitmq/definitions.json
+  poem_init_sql:
+    file: ../../services/puisi/db/init.sql
+  poem_init_cluster:
+    file: ../../services/puisi/db/init-cluster.sh
+  auth_init_sql:
+    file: ../../services/auth/db/init.sql
+  tts_schema_sql:
+    file: ../../workers/text-to-speech/schema.sql
+  mysql_klaster_cnf:
+    file: ./mysql/klaster.cnf
+  init_innodb_cluster:
+    file: ./skrip/init-innodb-cluster.sh
+  opensearch_haproxy:
+    file: ./opensearch/haproxy.cfg

@@ -1,0 +1,7 @@
+# aws ec2 run-instances --dry-run ... --instance-type <tipe>   (23 Nov 2026, us-east-1; keluaran disaring)
+# Catatan: pesan UnauthorizedOperation terpotong oleh 'head -c 330' sebelum penyaring; bagian akhir baris ARN dihapus dari berkas ini.
+t3.nano:   DryRunOperation  -> "Request would have succeeded, but DryRun flag is set."   (DIIZINKAN)
+t3.small:  DryRunOperation  -> "Request would have succeeded, but DryRun flag is set."   (DIIZINKAN)
+t3.medium: UnauthorizedOperation -> "You are not authorized to perform this operation. User: arn:aws:sts::<akun>:assumed-role/<sesi> is not authorized to perform: ec2:RunInstances on resource: arn:aws:ec2:us-east-1:<akun>..."   (DITOLAK)
+t3.large:  UnauthorizedOperation -> "You are not authorized to perform this operation. User: arn:aws:sts::<akun>:assumed-role/<sesi> is not authorized to perform: ec2:RunInstances on resource: arn:aws:ec2:us-east-1:<akun>..."   (DITOLAK)
+status instance uji ke-10 sekarang: terminated

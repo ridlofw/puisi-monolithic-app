@@ -1,0 +1,13 @@
+# Uji batas di region kedua (us-west-2), 23 Nov 2026; keluaran disaring
+mulai: 2026-11-23T16:07:18Z; us-east-1 sedang menjalankan: 9 instance
+peluncuran di us-west-2: i-0256fa446aade0f64
++15 detik: shutting-down   User initiated (2026-11-23 16:07:27 GMT)
++30 detik: shutting-down   User initiated (2026-11-23 16:07:27 GMT)
++45 detik: shutting-down   User initiated (2026-11-23 16:07:27 GMT)
++60 detik: terminated      User initiated (2026-11-23 16:07:27 GMT)
++75 detik: terminated      User initiated (2026-11-23 16:07:27 GMT)
++90 detik: terminated      User initiated (2026-11-23 16:07:27 GMT)
++105 detik: terminated     User initiated (2026-11-23 16:07:27 GMT)
++120 detik: terminated     User initiated (2026-11-23 16:07:27 GMT)
+# Perintah penghentian dari saya baru dijalankan sekitar 16:09:2x; instance sudah dihentikan pada 16:07:27, 9 detik setelah peluncuran.
+selesai: 2026-11-23T16:09:31Z

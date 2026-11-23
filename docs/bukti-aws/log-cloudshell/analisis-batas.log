@@ -1,0 +1,15 @@
+# Pembacaan batas EC2 di sandbox (23 Nov 2026, us-east-1; hanya membaca / --dry-run; keluaran disaring)
+== kuota vCPU On-Demand Standard (L-1216C47A)
+AccessDeniedException pada GetServiceQuota: peran sandbox tidak boleh membaca Service Quotas (kuota TIDAK DAPAT diverifikasi)
+== atribut akun max-instances
+20
+== vCPU dan RAM (MiB) per tipe
+t3.nano   2 vCPU   512
+t3.micro  2 vCPU  1024
+t3.small  2 vCPU  2048
+t2.nano   1 vCPU   512
+t2.micro  1 vCPU  1024
+t2.small  1 vCPU  2048
+== dry-run peluncuran
+t2.small: DryRunOperation (permintaan AKAN berhasil)
+t2.micro: DryRunOperation (permintaan AKAN berhasil)

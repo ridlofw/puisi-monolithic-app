@@ -1,0 +1,37 @@
+# =============================================================================
+# deploy/swarm/stack.efs.yaml  -  OPSIONAL: data SeaweedFS (audio) di Amazon EFS
+#
+# Tujuan: SeaweedFS adalah satu-satunya penyimpan data yang masih TUNGGAL di stack.yaml
+# (datanya di disk satu server). Dengan EFS (disk jaringan yang dikelola AWS lintas zona),
+# data tidak lagi terkunci di satu server: bila server pemegangnya mati, Swarm menjalankan
+# SeaweedFS di server pool ifham lain dan data yang sama terbaca. Henti layanan audio berkurang
+# dari "sampai server hidup lagi" menjadi sekitar satu sampai dua menit.
+#
+# STATUS: BELUM diuji. Syarat yang HARUS dicek dulu di sandbox Anda:
+#   1. Layanan EFS diizinkan (console: cari "EFS"). Bila tidak, lewati berkas ini.
+#   2. Buat sistem berkas EFS di VPC yang sama, dengan mount target di subnet ketiga server
+#      data, dan Security Group mount target mengizinkan TCP 2049 dari `puisi-swarm-sg`.
+#   3. Di SETIAP server pool ifham: sudo apt-get install -y nfs-common  (siapkan-node.sh memasangnya)
+#   4. Beri label  puisi.audio=true  pada KETIGA server pool ifham (bukan hanya satu).
+#
+# Cara pakai (dua berkas digabung, berkas kedua menimpa yang pertama):
+#   export EFS_DNS=fs-0123456789abcdef0.efs.<region>.amazonaws.com
+#   docker stack deploy -c deploy/swarm/stack.yaml -c deploy/swarm/stack.efs.yaml \
+#     --with-registry-auth puisi
+#
+# Peringatan: bila sebuah server pool ifham terisolasi dari jaringan tetapi tetap menyala, Swarm bisa menjalankan
+# SeaweedFS kedua di server lain pada direktori EFS yang SAMA (dua penulis pada satu data). Risiko ini
+# nyata dan belum diuji; tulis di laporan sebagai batas pendekatan EFS.
+#
+# Catatan: volume Docker tidak bisa diganti jenisnya setelah ada. Gunakan berkas ini sejak
+# deploy PERTAMA, atau hapus stack dan volume `puisi_seaweedfs-data` lebih dulu.
+# =============================================================================
+version: "3.13"
+
+volumes:
+  seaweedfs-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${EFS_DNS:?isi EFS_DNS dengan nama DNS sistem berkas EFS},nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport"
+      device: ":/"

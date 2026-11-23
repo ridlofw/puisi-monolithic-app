@@ -1,0 +1,16 @@
+# CloudTrail: panggilan TerminateInstances pada 2026-11-23 16:02-16:06 UTC (nama pemanggil disaring; hanya jumlah per pemanggil)
+39 panggilan oleh pengguna SISTEM lab (nama berawalan "sys")
+ 1 panggilan oleh sesi CloudShell saya (untuk 3 instance terakhir)
+
+# Layanan AWS lain: apakah API-nya dapat DIBACA (hanya list/describe; membuat sumber daya BELUM diuji)
+rds describe-db-instances: DIIZINKAN
+dynamodb list-tables: DIIZINKAN
+sqs list-queues: DIIZINKAN
+sns list-topics: DIIZINKAN
+elasticache describe-cache-clusters: DIIZINKAN
+lambda list-functions: DIIZINKAN
+autoscaling describe-auto-scaling-groups: DIIZINKAN
+mq list-brokers: DITOLAK (AccessDeniedException)
+es list-domain-names: DITOLAK (AccessDeniedException)
+ecs list-clusters: DITOLAK (AccessDeniedException)
+efs describe-file-systems: DITOLAK (AccessDeniedException)

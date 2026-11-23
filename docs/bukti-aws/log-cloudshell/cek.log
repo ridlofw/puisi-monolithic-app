@@ -1,0 +1,57 @@
+==== Node ====
+HOSTNAME                        STATUS    AVAILABILITY   MANAGER STATUS
+ip-172-31-2-26.ec2.internal     Ready     Active         
+ip-172-31-6-217.ec2.internal    Ready     Active         Reachable
+ip-172-31-13-147.ec2.internal   Ready     Active         
+ip-172-31-20-24.ec2.internal    Ready     Active         
+ip-172-31-20-167.ec2.internal   Ready     Active         Leader
+ip-172-31-26-182.ec2.internal   Ready     Active         
+ip-172-31-34-199.ec2.internal   Ready     Active         
+ip-172-31-36-155.ec2.internal   Ready     Active         Reachable
+ip-172-31-42-156.ec2.internal   Ready     Active         
+
+==== Layanan ====
+puisi_analisis-emosi  global  3/3
+puisi_auth-db-1  replicated  1/1
+puisi_auth-db-2  replicated  1/1
+puisi_auth-db-3  replicated  1/1
+puisi_auth-db-cluster-init  replicated job  0/1 (1/1 completed)
+puisi_auth-db-router  replicated  2/2 (max 1 per node)
+puisi_auth-service  global  3/3
+puisi_auto-tagging  global  3/3
+puisi_gateway  global  3/3
+puisi_klasifikasi-genre  global  3/3
+puisi_poem-consumer  global  3/3
+puisi_poem-db-1  replicated  1/1
+puisi_poem-db-2  replicated  1/1
+puisi_poem-db-3  replicated  1/1
+puisi_poem-db-cluster-init  replicated job  0/1 (1/1 completed)
+puisi_poem-db-router-1  replicated  1/1
+puisi_poem-db-router-2  replicated  1/1
+puisi_poem-relay  global  3/3
+puisi_poem-service  global  3/3
+puisi_rabbitmq-1  replicated  1/1
+puisi_rabbitmq-2  replicated  1/1
+puisi_rabbitmq-3  replicated  1/1
+puisi_redis  replicated  1/1
+registri_registry  replicated  1/1
+
+==== Memori tiap server (terpakai/total MB, swap terpakai) ====
+s1: 538/1909 MB  swap 0 MB
+
+s2: 509/1909 MB  swap 0 MB
+
+s3: 502/1909 MB  swap 0 MB
+
+s4: 1012/1909 MB  swap 1 MB
+
+s5: 1066/1909 MB  swap 1 MB
+
+s6: 1058/1909 MB  swap 0 MB
+
+s7: 929/1909 MB  swap 1 MB
+
+s8: 979/1909 MB  swap 0 MB
+
+s9: 1006/1909 MB  swap 0 MB
+

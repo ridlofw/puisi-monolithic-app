@@ -1,0 +1,48 @@
+# deploy/aws/override-9server.yaml : penyesuaian stack.yaml untuk 9 server t3.small (RAM 2 GiB tiap server) di sandbox AWS.
+# Dipakai SETELAH stack.yaml, bukan menggantikannya:
+#   docker stack deploy -c deploy/swarm/stack.yaml -c deploy/aws/override-9server.yaml puisi
+# (9server.sh stack2 menjalankannya). stack.yaml hanya diubah SATU hal terpisah: healthcheck OpenSearch (lihat catatan di bagian bawah berkas ini).
+#
+# Yang berbeda dari stack.yaml, dan alasannya:
+#  *** v3 HARUS SUDAH DIBANGUN (bash 9server.sh gateway) sebelum `stack2`, atau ubah baris gateway di bawah ke v2/v1. ***
+#  1. gateway   : memakai image v3 (dibangun dengan CDN_URL dan rentang IP CloudFront; `9server.sh gateway`). Tanpa baris ini, men-deploy ulang
+#                 stack.yaml MENGEMBALIKAN gateway ke v1. (Saat tahap 2 dijalankan 23 Nov 2026 isinya masih v2; v3 dipasang sesudahnya lewat
+#                 `docker service update`, jadi berkas di server 1 tidak diperbarui; berkas ini yang benar untuk deploy ulang.)
+#  2. OpenSearch: heap JVM 384 MB (stack.yaml: 512 MB) dan agen "performance analyzer" dimatikan. Server pool pencarian (server 1 sampai 3)
+#                 juga menjalankan RabbitMQ, Redis, gateway dan dua worker, serta menjadi manager Swarm; memori tersedia hanya sekitar 1,1 GB.
+#  3. text-to-speech: 1 replika (stack.yaml: global = satu per server tts). Satu worker Piper cukup untuk demo dan menghemat sekitar 2 x 250 MB.
+#  4. search-consumer: 1 replika (di Compose juga 1; stack.yaml sendiri menulis bahwa banyak consumer BELUM diuji).
+#  5. search-service : 2 replika, bukan satu per server (hemat memori Apache/PHP di satu server).
+#
+# CATATAN: healthcheck OpenSearch TIDAK bisa diubah lewat override. `docker stack deploy` menggabungkan daftar `test` dengan MENAMBAHKAN
+# (hasilnya dua perintah berurutan; yang pertama, yang lama, tetap dipakai). Terbukti di AWS 23 Nov 2026. Karena itu perbaikannya
+# (healthcheck yang tidak buntu di Swarm) ditulis langsung di deploy/swarm/stack.yaml; lihat komentar di sana.
+x-env-opensearch-aws: &env-opensearch-aws
+  OPENSEARCH_JAVA_OPTS: "-Xms384m -Xmx384m"
+  DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+
+services:
+  gateway:
+    image: "localhost:5000/puisi-gateway:v3"
+
+  opensearch-1:
+    environment: *env-opensearch-aws
+  opensearch-2:
+    environment: *env-opensearch-aws
+  opensearch-3:
+    environment: *env-opensearch-aws
+
+  search-service:
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  search-consumer:
+    deploy:
+      mode: replicated
+      replicas: 1
+
+  text-to-speech:
+    deploy:
+      mode: replicated
+      replicas: 1

@@ -1,0 +1,15 @@
+# Uji batas jumlah instance, 23 Nov 2026 (us-east-1; jenis uji t2.nano; tag Name=puisi-uji-batas; keluaran disaring)
+mulai: 2026-11-23T16:03:19Z; instance sebelum uji: 9; jenis uji: t2.nano (1 vCPU); batas uji: total 38
+instance ke-10: berhasil dibuat
+instance ke-11: berhasil dibuat
+... (setiap peluncuran sampai ke-38 menjawab "berhasil dibuat"; tidak ada satu pun penolakan dari API EC2)
+instance ke-37: berhasil dibuat
+instance ke-38: berhasil dibuat
+instance uji yang dihapus sekarang (oleh saya, perintah pembersihan sekitar 16:04:23Z): 3
+selesai: 2026-11-23T16:04:49Z; instance pending/running sekarang: 9
+
+# Keadaan akhir 29 instance uji (aws ec2 describe-instances, filter tag): SEMUA "terminated", alasan "Client.UserInitiatedShutdown / User initiated".
+# Waktu penghentian (UTC, 23 Nov 2026): 16:03:29 30 31 32 37 38 40 44 45 46 47 52 54 54 56 | 16:04:01 02 03 04 07 09 09 16 17 18 19 | 23 23 23
+#   -> 26 instance dihentikan antara 16:03:29 dan 16:04:19, SEBELUM perintah pembersihan saya (16:04:23). Hanya 3 yang dihapus oleh saya.
+#   -> penghentian pertama 16:03:29 terjadi 10 detik setelah uji dimulai (16:03:19).
+# Instance server asli (puisi-s1 .. puisi-s9): tetap 9 berjalan, tidak ada yang dihentikan.

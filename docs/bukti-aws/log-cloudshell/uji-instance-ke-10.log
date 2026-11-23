@@ -1,0 +1,8 @@
+waktu: 2026-11-23T15:47:40Z
+instance pending/running sebelum percobaan: 9
+jawaban AWS atas run-instances ke-10 (t3.nano, zona a, Security Group yang sama):
+i-0fc31991882e7208f
+INSTANCE KE-10 BERHASIL DIBUAT, dihapus sekarang:
+shutting-down
+instance pending/running sesudah: 9
+(pemeriksaan berikutnya: status instance uji ke-10 = terminated)

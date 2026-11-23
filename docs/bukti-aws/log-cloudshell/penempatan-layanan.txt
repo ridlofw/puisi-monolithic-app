@@ -1,0 +1,11 @@
+# Penempatan tugas (task) yang SEDANG BERJALAN, dibaca dari `docker service ps` di manager (23 Nov 2026, sekitar 15:50 UTC).
+# Format: server: layanan x jumlah-task. "opensearch" = HAProxy pintu masuk OpenSearch. Job yang sudah selesai tidak ikut.
+puisi-s1: analisis-emosix1 auto-taggingx1 gatewayx1 opensearchx1 opensearch-1x1 opensearch-replikax1 rabbitmq-1x1 registryx1 search-consumerx1
+puisi-s2: analisis-emosix1 auto-taggingx1 gatewayx1 opensearchx1 opensearch-2x1 rabbitmq-2x1 redisx1 search-servicex1
+puisi-s3: analisis-emosix1 auto-taggingx1 gatewayx1 opensearchx1 opensearch-3x1 rabbitmq-3x1 search-servicex1
+puisi-s4: klasifikasi-genrex1 poem-consumerx1 poem-db-1x1 poem-db-router-1x1 poem-relayx1 poem-servicex1
+puisi-s5: klasifikasi-genrex1 poem-consumerx1 poem-db-2x1 poem-db-router-2x1 poem-relayx1 poem-servicex1
+puisi-s6: klasifikasi-genrex1 poem-consumerx1 poem-db-3x1 poem-relayx1 poem-servicex1
+puisi-s7: auth-db-1x1 auth-db-routerx1 auth-servicex1 seaweedfsx1 tts-db-1x1 tts-db-routerx1
+puisi-s8: auth-db-2x1 auth-db-routerx1 auth-servicex1 text-to-speechx1 tts-db-2x1
+puisi-s9: auth-db-3x1 auth-servicex1 tts-db-3x1 tts-db-routerx1

@@ -1,0 +1,31 @@
+# Image gateway untuk Swarm. Di Compose, gateway memakai bind mount (nginx.conf, rute/,
+# web/). Bind mount tidak ada di server lain, jadi semuanya dimasukkan ke image.
+# Berkas sumbernya tetap milik Pison; berkas ini hanya menyalinnya.
+#
+# Dibangun dari AKAR repositori:
+#   docker build -f deploy/swarm/Dockerfile.gateway -t puisi-gateway .
+# (atau lewat deploy/swarm/skrip/bangun-image.sh)
+FROM nginx:alpine
+
+COPY gateway/nginx.conf       /etc/nginx/nginx.conf
+COPY gateway/proxy-umum.conf  /etc/nginx/proxy-umum.conf
+COPY gateway/rute/            /etc/nginx/rute/
+# tambahan khusus Swarm/ALB (health check dan IP klien), bukan milik gateway/rute.
+# deploy/swarm/gateway/*.conf = 00-swarm.conf, dan 01-cloudfront.conf BILA ada (dibuat gateway/buat-cloudfront-conf.sh; tidak ada di git).
+COPY deploy/swarm/gateway/*.conf /etc/nginx/rute/
+COPY web/                     /usr/share/nginx/html/
+
+# Alamat CDN untuk gambar kutipan (AWS Lambda lewat CloudFront, Hands-on 1). web/js/api.js
+# (milik Pison) menyimpan `cdn: ''`, dan frontend MEMATIKAN fitur gambar bila kosong. Di sini
+# nilainya disisipkan saat build supaya berkas milik Pison tidak diubah. Contoh:
+#   docker build --build-arg CDN_URL=https://dxxxx.cloudfront.net -f deploy/swarm/Dockerfile.gateway .
+# Kosongkan (bawaan) untuk tetap tanpa gambar kutipan. Lihat deploy/lambda/README.md.
+ARG CDN_URL=""
+RUN if [ -n "$CDN_URL" ]; then \
+      u="${CDN_URL%/}"; \
+      sed -i "s|cdn: '',|cdn: '${u}',|" /usr/share/nginx/html/js/api.js \
+      && grep -q "cdn: '${u}'," /usr/share/nginx/html/js/api.js; \
+    fi
+
+# gagal lebih awal saat build bila sintaks Nginx salah
+RUN nginx -t

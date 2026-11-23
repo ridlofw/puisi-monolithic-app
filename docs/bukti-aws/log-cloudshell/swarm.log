@@ -1,0 +1,71 @@
+==== 1. Menunggu 9 server terdaftar di SSM (maks 10 menit) ====
+server online di SSM: 9
+==== 2. Menunggu Docker siap di tiap server ====
+s1: Docker version 25.0.14, build 0bab007
+
+s2: Docker version 25.0.14, build 0bab007
+
+s3: Docker version 25.0.14, build 0bab007
+
+s4: Docker version 25.0.14, build 0bab007
+
+s5: Docker version 25.0.14, build 0bab007
+
+s6: Docker version 25.0.14, build 0bab007
+
+s7: Docker version 25.0.14, build 0bab007
+
+s8: Docker version 25.0.14, build 0bab007
+
+s9: Docker version 25.0.14, build 0bab007
+
+==== 3. Membentuk Swarm ====
+swarm: active
+
+s2 (manager): This node joined a swarm as a manager.
+
+s3 (manager): This node joined a swarm as a manager.
+
+s4 (worker): This node joined a swarm as a worker.
+
+s5 (worker): This node joined a swarm as a worker.
+
+s6 (worker): This node joined a swarm as a worker.
+
+s7 (worker): This node joined a swarm as a worker.
+
+s8 (worker): This node joined a swarm as a worker.
+
+s9 (worker): This node joined a swarm as a worker.
+
+==== 4. Label ====
+s1 (ip-172-31-20-167.ec2.internal) ok
+s1 (ip-172-31-20-167.ec2.internal) 
+s2 (ip-172-31-36-155.ec2.internal) ok
+s2 (ip-172-31-36-155.ec2.internal) 
+s3 (ip-172-31-6-217.ec2.internal) ok
+s3 (ip-172-31-6-217.ec2.internal) 
+s4 (ip-172-31-20-24.ec2.internal) ok
+s4 (ip-172-31-20-24.ec2.internal) 
+s5 (ip-172-31-34-199.ec2.internal) ok
+s5 (ip-172-31-34-199.ec2.internal) 
+s6 (ip-172-31-2-26.ec2.internal) ok
+s6 (ip-172-31-2-26.ec2.internal) 
+s7 (ip-172-31-26-182.ec2.internal) ok
+s7 (ip-172-31-26-182.ec2.internal) 
+s8 (ip-172-31-42-156.ec2.internal) ok
+s8 (ip-172-31-42-156.ec2.internal) 
+s9 (ip-172-31-13-147.ec2.internal) ok
+s9 (ip-172-31-13-147.ec2.internal) 
+HOSTNAME                        STATUS    MANAGER STATUS
+ip-172-31-2-26.ec2.internal     Ready     
+ip-172-31-6-217.ec2.internal    Ready     Reachable
+ip-172-31-13-147.ec2.internal   Ready     
+ip-172-31-20-24.ec2.internal    Ready     
+ip-172-31-20-167.ec2.internal   Ready     Leader
+ip-172-31-26-182.ec2.internal   Ready     
+ip-172-31-34-199.ec2.internal   Ready     
+ip-172-31-36-155.ec2.internal   Ready     Reachable
+ip-172-31-42-156.ec2.internal   Ready     
+
+Selesai. Langkah berikut: unggah kode.tgz ke CloudShell lalu: bash 9server.sh kode

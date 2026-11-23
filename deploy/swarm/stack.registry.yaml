@@ -1,0 +1,32 @@
+# Jalur B (cadangan bila ECR tidak tersedia di sandbox): registry Docker sendiri di Swarm.
+#   docker stack deploy -c deploy/swarm/stack.registry.yaml registri
+# lalu bangun dan dorong image ke localhost:5000 (skrip/bangun-image.sh tanpa ECR=1).
+#
+# Port 5000 dibuka lewat routing mesh, jadi `localhost:5000` bisa dijangkau dari SEMUA
+# server. Docker mengizinkan registry di localhost tanpa TLS.
+#
+# Dipaku ke server pool infra slot 1 (label dari `9server.sh swarm`); tanpa label itu ia tidak
+# akan start. CATATAN JUJUR: registry ini satu salinan, datanya di disk server itu. Bila server itu mati,
+# server lain tetap bisa memakai image yang sudah mereka simpan, tetapi task BARU di
+# server yang belum punya image itu tidak bisa mengunduhnya sampai slot 1 hidup. Itu
+# SPOF kecil untuk jalur penjadwalan ulang, bukan untuk layanan yang sedang berjalan.
+services:
+  registry:
+    image: registry:2
+    ports:
+      - target: 5000
+        published: 5000
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - registry-data:/var/lib/registry
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 1"]
+      restart_policy:
+        condition: any
+        delay: 10s
+
+volumes:
+  registry-data:
