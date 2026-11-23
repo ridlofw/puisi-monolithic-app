@@ -134,9 +134,34 @@ def tahap_pemutus_db(lap, token):
               'Router 1 kembali, half-open lalu closed tercatat di log poem-service')
 
 
+def daftar(nama):
+    return http('POST', '/api/auth/register', {'username': nama, 'password': 'rahasia123', 'nama': 'Uji Auth',
+                                               'no_id': '0'})
+
+
+def tahap_pemutus_auth(lap, token):
+    # register dipakai karena login dibatasi 10 per menit di gateway
+    compose('pause', 'auth-db')
+    try:
+        hasil = [daftar('pa' + uuid.uuid4().hex[:10]) for _ in range(14)]
+    finally:
+        compose('unpause', 'auth-db')
+    kode = sorted({k for k, _, _, _ in hasil})
+    durasi = [d for _, _, _, d in hasil]
+    lambat = sum(1 for d in durasi if d > 1.5)
+    akhir = sorted(durasi[-6:])[3]
+    lap.catat('pemutus-auth-gagal-cepat', kode == [503] and lambat <= 8 and akhir < 0.2,
+              'auth-db di-pause: 14 register -> %s, %d lambat > 1,5 s, median 6 terakhir %.0f ms'
+              % (kode, lambat, akhir * 1000))
+    time.sleep(11)
+    pulih = [daftar('pb' + uuid.uuid4().hex[:10])[0] for _ in range(4)]
+    lap.catat('pemutus-auth-pulih', pulih[-1] == 201, 'auth-db kembali, register -> %s' % pulih)
+
+
 TAHAP = {
     'idempotensi': tahap_idempotensi,
     'pemutus-db': tahap_pemutus_db,
+    'pemutus-auth': tahap_pemutus_auth,
 }
 
 
