@@ -33,6 +33,8 @@ Header yang membantu demo:
 | `Idempotent-Replay` | poem-service | `true` bila kiriman dengan kunci itu sudah pernah disimpan; puisi dan event tidak dibuat lagi |
 
 Bila layanan sebuah rute belum dijalankan, gateway menjawab 503 dengan JSON berbentuk sama.
+Gateway membatasi `POST /api/puisi` 5 request per detik dan `GET /api/search` 30 request per detik per IP;
+kelebihannya dijawab 429 dengan JSON berbentuk sama dan header `Retry-After: 1`.
 
 ## 2. Token
 
