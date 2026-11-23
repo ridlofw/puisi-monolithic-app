@@ -7,7 +7,7 @@
 #    dan MENGUNDUH model suara Piper (sekitar 60 MB) dari huggingface.co. Server butuh akses internet keluar (ada).
 #  - Dockerfile tts menjalankan unit test sebagai CMD bawaan; di stack, perintahnya diganti (python worker.py).
 cd /opt/puisi || exit 1
-R=localhost:5000; T="${TAG:-v1}"
+R=localhost:5000; T="${TAG:-v4}"
 mkdir -p logs
 b() {  # b <nama> <Dockerfile> <konteks> [argumen build tambahan]
   local n="$1" f="$2" ctx="$3"; shift 3

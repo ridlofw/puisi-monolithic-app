@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # deploy/aws/bangun6.sh : membangun dan mendorong 6 image tahap 1 (pencarian dan tts dibangun terpisah oleh bangun2.sh, tahap 2)
 # ke registry localhost:5000 (Jalur B). Dijalankan di server 1 oleh 9server.sh. Log per image ada di logs/.
-# CDN_URL (opsional) dimasukkan ke image gateway.
+# CDN_URL (opsional) dimasukkan ke image gateway. TAG (bawaan v4, dikirim 9server.sh) = tag semua image; jangan menimpa tag lama.
 cd /opt/puisi || exit 1
-R=localhost:5000; T="${TAG:-v1}"
+R=localhost:5000; T="${TAG:-v4}"
 mkdir -p logs
 b() {  # b <nama> <Dockerfile> <konteks> [argumen build tambahan]
   local n="$1" f="$2" ctx="$3"; shift 3

@@ -1,0 +1,168 @@
+# Bukti uji kode Pison (Bab 10 dan 11) di AWS, 23 November 2026 (UTC)
+# Sistem 39 layanan yang sedang berjalan diperbarui di tempat: kode sampai commit 10ba055 (main), tag image v4, gateway v4-gw.
+# Sumber: berkas ~/verifikasi-awal.log, ~/ujibaru-v4.log, ~/failover-s6.log, ~/mon-tulis-s6.log, ~/verifikasi-akhir.log di CloudShell.
+# Bagian 1, 2, 4 disalin dari teks terminal (spasi antar-kolom dirapatkan dan baris yang terlipat di terminal disambung; isi dan angkanya tidak diubah; disamarkan oleh `bersih` bila perlu: nomor akun dan email). Bagian 3 memuat
+# seluruh berkas failover-s6.log dan CUPLIKAN pemantau (tiap baris ke-6 antara 17:28:10 dan 17:30:58, plus baris pertama dan RINGKASAN);
+# berkas pemantau lengkap berisi sekitar 480 baris. Bagian 5 (memori) dibaca dari layar terminal, bukan salinan berkas.
+# Bagian awal keluaran `ujibaru` (anggota poem-db) tidak ikut tersalin (tergulung di terminal); anggota klaster dicatat di bagian 1, 3, dan 4.
+
+=== 1. Kondisi awal SEBELUM pembaruan (kode lama 6eee96a, ~/verifikasi-awal.log) ===
+==== poem-db (server 4): harus 3 baris ONLINE ====
+poem-db-3 ONLINE PRIMARY
+poem-db-1 ONLINE SECONDARY
+poem-db-2 ONLINE SECONDARY
+
+==== auth-db (server 7): harus 3 baris ONLINE ====
+auth-db-3 ONLINE SECONDARY
+auth-db-1 ONLINE PRIMARY
+auth-db-2 ONLINE SECONDARY
+
+==== RabbitMQ: harus 3 node ====
+rabbit@rabbitmq-1
+rabbit@rabbitmq-2
+rabbit@rabbitmq-3
+
+==== gateway ====
+healthz=200 {"status":"sukses","pesan":"Layanan puisi sehat."}
+
+==== uji_e2e.py ====
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/8 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, "emosi_dominan_per_bait": ["perc
+audio LULUS GET /audio/puisi_8.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 4 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+
+=== 2. `bash 9server.sh ujibaru` SESUDAH pembaruan (~/ujibaru-v4.log, bagian yang tersalin) ===
+==== tabel idempotensi di tiap node poem-db (harus 1 di ketiganya) ====
+poem-db-1: 1
+
+poem-db-2: 1
+
+poem-db-3: 1
+
+==== Idempotency-Key dan throttle 429 (di server 1, lewat gateway lokal) ====
+== Idempotency-Key (poem-service, tabel idempotensi) ==
+kiriman pertama LULUS 202 diharapkan; kode=202 id=53
+kiriman ulang sama LULUS id sama dan Idempotent-Replay: true diharapkan; kode=202 id=53 replay=true
+kunci sama isi beda LULUS 409 diharapkan; kode=409
+tanpa kunci (kontrol) LULUS puisi baru (id berbeda) diharapkan; kode=202 id=54
+kunci tidak valid LULUS 400 diharapkan (kurang dari 8 karakter); kode=400
+== Throttling gateway (429) ==
+GET galeri tanpa 429 LULUS 120 GET -> {"200": 120}
+POST dibatasi (429) LULUS 300 POST cepat -> {"401": 28, "429": 272}
+429 berbentuk JSON LULUS badan status=error dan Retry-After: 1 diharapkan; contoh={"status": "error", "pesan": "Terlalu banyak permintaan, coba lagi sebentar lagi."}
+selebihnya diteruskan LULUS kode 5xx atau 0 berarti layanan di belakang gateway terganggu: {"401": 28, "429": 272}
+-- 9 dari 9 pemeriksaan LULUS
+
+==== worker suara (1 replika di salah satu server 7 sampai 9): memori kontainer dan memori server ====
+worker suara ada di server 9
+puisi_text-to-speech.1.f1ibivr938f1cluel3l77fdjm memori 276.9MiB / 1.865GiB
+tersedia 396 MB dari 1909 MB; swap 733 MB
+
+==== pemanasan model Piper (baris log "voice model loaded") ====
+<email> | {"waktu": "2026-11-23T17:19:54.724+00:00", "level": "INFO", "worker": "text-to-speech", "pesan": "voice model loaded before the first job", "warm_up_seconds": 0.79, "load_seconds": 0.692}
+
+=== 3. Uji matikan PRIMARY poem-db dengan probe tulis (s6 = poem-db-3 PRIMARY, poem-service, relay, consumer) ===
+--- ~/failover-s6.log (seluruhnya; baris poem-db di bawah dibaca dari server 4) ---
+pantau-mulai 17:27:49
+STOP-s6 17:28:19
+stopping
+cek-primary 17:30:01
+poem-db-1 ONLINE PRIMARY
+poem-db-2 ONLINE SECONDARY
+
+selesai-cek 17:30:08
+START-s6 17:30:29
+--- sesudah s6 dinyalakan, pemeriksaan 17:32:20 (dari terminal): poem-db-3 ONLINE SECONDARY, poem-db-1 ONLINE PRIMARY, poem-db-2 ONLINE SECONDARY; 39 layanan penuh, 0 belum ---
+--- ~/mon-tulis-s6.log (cuplikan; GET /api/puisi tiap detik dan tulis berkunci tiap 5 detik, lewat ALB) ---
+mulai 17:27:49, GATEWAY=http://<alb-dns>, 480 detik.
+17:28:10 get=200 tulis=-
+17:28:16 get=200 tulis=-
+17:28:22 get=200 tulis=-
+17:28:28 get=200 tulis=-
+17:28:34 get=200 tulis=202
+17:28:40 get=200 tulis=-
+17:28:46 get=200 tulis=-
+17:28:52 get=200 tulis=-
+17:28:58 get=200 tulis=-
+17:29:04 get=200 tulis=202
+17:29:10 get=200 tulis=-
+17:29:16 get=200 tulis=-
+17:29:22 get=200 tulis=-
+17:29:28 get=200 tulis=-
+17:29:34 get=200 tulis=202
+17:29:40 get=200 tulis=-
+17:29:46 get=200 tulis=-
+17:29:52 get=200 tulis=-
+17:29:58 get=200 tulis=-
+17:30:04 get=200 tulis=202
+17:30:10 get=200 tulis=-
+17:30:16 get=200 tulis=-
+17:30:22 get=200 tulis=-
+17:30:28 get=200 tulis=-
+17:30:35 get=200 tulis=202
+17:30:40 get=200 tulis=-
+17:30:46 get=200 tulis=-
+17:30:52 get=200 tulis=-
+17:30:58 get=200 tulis=-
+17:35:49 get=200 tulis=-
+RINGKASAN: GET 480 (gagal 0); tulis 96 (gagal 0, dikirim ulang 0 kali)
+Catatan: pemeriksaan terpisah atas seluruh berkas pemantau menghitung 0 baris selain "get=200 tulis=202" atau "get=200 tulis=-".
+
+=== 4. verifikasi SESUDAH failover dan pemulihan (~/verifikasi-akhir.log) ===
+==== poem-db (server 4): harus 3 baris ONLINE ====
+poem-db-3 ONLINE SECONDARY
+poem-db-1 ONLINE PRIMARY
+poem-db-2 ONLINE SECONDARY
+
+==== auth-db (server 7): harus 3 baris ONLINE ====
+auth-db-3 ONLINE SECONDARY
+auth-db-1 ONLINE PRIMARY
+auth-db-2 ONLINE SECONDARY
+
+==== RabbitMQ: harus 3 node ====
+rabbit@rabbitmq-1
+rabbit@rabbitmq-2
+rabbit@rabbitmq-3
+
+==== gateway ====
+healthz=200 {"status":"sukses","pesan":"Layanan puisi sehat."}
+
+==== uji_e2e.py ====
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/173 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, "emosi_dominan_per_bait": ["perc
+audio LULUS GET /audio/puisi_173.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 6 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+
+=== 5. Memori tiap server (dibaca dari layar `bash 9server.sh memori`; MB tersedia / swap terpakai) ===
+server   sebelum pembaruan   sesudah pembaruan
+s1       576 / 155           615 / 182
+s2       534 / 59            532 / 53
+s3       536 / 64            517 / 58
+s4       559 / 0             540 / 0
+s5       533 / 7             479 / 5
+s6       446 / 2             429 / 6
+s7       216 / 296           179 / 402
+s8       374 / 502           497 / 636
+s9       339 / 387           401 / 733
+(Worker suara berjalan di s9 sesudah pembaruan; catatan penempatan lama menyebut s8.)
+
+=== 6. Catatan operasional dari percobaan ini ===
+- `9server.sh image` (versi lama) menggantung: `curl http://localhost:5000` di shell SSM tidak dijawab (localhost dicoba lewat ::1 dulu; port 5000 hanya ditahan dockerd),
+  padahal registry sehat: 127.0.0.1:5000 menjawab 200, `docker pull localhost:5000/...` normal, katalog 8 repositori utuh. Skrip diperbaiki (127.0.0.1, batas waktu,
+  registry tidak dipasang ulang bila sudah ada); langkah build dijalankan manual lewat `bash 9server.sh jalankan 1 "... bangun6.sh"`.
+- Registry sempat dipasang ulang (`docker service update --force`, lalu `docker stack rm registri` dan `stack deploy`) saat mencari penyebab; volume `registri_registry-data` dipertahankan
+  dan semua image lama (v1, gateway v3) tetap ada.

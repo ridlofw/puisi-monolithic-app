@@ -4,15 +4,23 @@
 # (9server.sh stack2 menjalankannya). stack.yaml hanya diubah SATU hal terpisah: healthcheck OpenSearch (lihat catatan di bagian bawah berkas ini).
 #
 # Yang berbeda dari stack.yaml, dan alasannya:
-#  *** v3 HARUS SUDAH DIBANGUN (bash 9server.sh gateway) sebelum `stack2`, atau ubah baris gateway di bawah ke v2/v1. ***
-#  1. gateway   : memakai image v3 (dibangun dengan CDN_URL dan rentang IP CloudFront; `9server.sh gateway`). Tanpa baris ini, men-deploy ulang
-#                 stack.yaml MENGEMBALIKAN gateway ke v1. (Saat tahap 2 dijalankan 23 Nov 2026 isinya masih v2; v3 dipasang sesudahnya lewat
-#                 `docker service update`, jadi berkas di server 1 tidak diperbarui; berkas ini yang benar untuk deploy ulang.)
+#  *** Gateway final (tag GATEWAY_TAG, bawaan v4-gw) HARUS SUDAH DIBANGUN (bash 9server.sh gateway) sebelum `stack2`, atau gateway tidak naik. ***
+#  1. gateway   : memakai image ${GATEWAY_TAG:-v4-gw} (dibangun dengan CDN_URL dan rentang IP CloudFront; `9server.sh gateway`). Tanpa baris ini,
+#                 men-deploy ulang stack.yaml MENGEMBALIKAN gateway ke image ${TAG} polos (tanpa rentang IP CloudFront, jadi throttle per edge, bukan per
+#                 pengunjung). `9server.sh stack2` mengirim TAG dan GATEWAY_TAG; kalau memakai `docker stack deploy` manual, kirim keduanya juga.
+#                 (Sejarah: pada kode sebelum perubahan Pison, 23 Nov 2026, baris ini menunjuk v3 tetap; v1 sampai v3 milik kode itu.)
 #  2. OpenSearch: heap JVM 384 MB (stack.yaml: 512 MB) dan agen "performance analyzer" dimatikan. Server pool pencarian (server 1 sampai 3)
 #                 juga menjalankan RabbitMQ, Redis, gateway dan dua worker, serta menjadi manager Swarm; memori tersedia hanya sekitar 1,1 GB.
 #  3. text-to-speech: 1 replika (stack.yaml: global = satu per server tts). Satu worker Piper cukup untuk demo dan menghemat sekitar 2 x 250 MB.
-#  4. search-consumer: 1 replika (di Compose juga 1; stack.yaml sendiri menulis bahwa banyak consumer BELUM diuji).
+#  4. search-consumer: 1 replika (stack.yaml sendiri menulis bahwa banyak consumer BELUM diuji di Swarm). Catatan: Compose terbaru (Pison, Bab 10)
+#                 memakai 3 consumer paralel karena tiap update menunggu refresh indeks sekitar 1 detik, jadi satu consumer membatasi kira-kira 1 event
+#                 per detik. Untuk demo cukup. Mau 3 (consumer PHP CLI ringan, tetapi s1 hanya punya tersedia sekitar 530 MB): ubah `replicas` di bawah
+#                 ke 3 SESUDAH mengukur memori dengan `9server.sh memori`.
 #  5. search-service : 2 replika, bukan satu per server (hemat memori Apache/PHP di satu server).
+#
+# TOMBOL DARURAT untuk kode Bab 10 dan 11 (Pison): bawaan kode TETAP AKTIF (tidak ada yang di-nonaktifkan di sini). Buka komentar blok di bagian
+# bawah berkas ini hanya bila uji (`9server.sh ujibaru`, uji matikan server) menunjukkan masalah. Alasannya ada di docs/PANDUAN-DEPLOY-AWS.md,
+# bagian "Perubahan kode Pison".
 #
 # CATATAN: healthcheck OpenSearch TIDAK bisa diubah lewat override. `docker stack deploy` menggabungkan daftar `test` dengan MENAMBAHKAN
 # (hasilnya dua perintah berurutan; yang pertama, yang lama, tetap dipakai). Terbukti di AWS 23 Nov 2026. Karena itu perbaikannya
@@ -23,7 +31,7 @@ x-env-opensearch-aws: &env-opensearch-aws
 
 services:
   gateway:
-    image: "localhost:5000/puisi-gateway:v3"
+    image: "localhost:5000/puisi-gateway:${GATEWAY_TAG:-v4-gw}"
 
   opensearch-1:
     environment: *env-opensearch-aws
@@ -46,3 +54,33 @@ services:
     deploy:
       mode: replicated
       replicas: 1
+
+  # ---------------------------------------------------------------------------------------------------------------------------------
+  # TOMBOL DARURAT (dikomentari = TIDAK aktif). Buka komentar hanya blok yang perlu.
+  #
+  # (a) Koneksi database persisten (bawaan kode: aktif). Tiap proses Apache menyimpan koneksi ke MySQL; batas `max_connections` MySQL adalah 100
+  #     (deploy/swarm/mysql/klaster.cnf dan services/puisi/db/my.cnf). Di bawah uji beban atau bila uji matikan server s4 menunjukkan galat tulis yang
+  #     tidak ada pada kode lama ("Too many connections", "server has gone away"), matikan persistensi. Nama variabel BERBEDA di tiap layanan:
+  #     poem memakai DB_PERSISTEN, auth memakai DB_PERSISTENT. (poem-relay dan poem-consumer memakai kode yang sama dengan poem-service.)
+  #     Satu catatan: `docker stack deploy` menggabungkan `environment` berbentuk peta (seperti OpenSearch di atas), jadi cukup menulis kuncinya di sini.
+  #
+  # poem-service:
+  #   environment:
+  #     DB_PERSISTEN: "0"
+  # poem-relay:
+  #   environment:
+  #     DB_PERSISTEN: "0"
+  # poem-consumer:
+  #   environment:
+  #     DB_PERSISTEN: "0"
+  # auth-service:
+  #   environment:
+  #     DB_PERSISTENT: "0"
+  #
+  # (b) Worker suara: model Piper kini dimuat terus-menerus (ResidentPiperEngine), jadi memorinya naik permanen di server yang menjalankannya (satu dari server 7 sampai 9; pada bukti lama s8. Server 7 sampai 9
+  #     paling ketat: tersedia 267 sampai 426 MB, swap sampai 397 MB pada kode lama). Bila `9server.sh ujibaru` menunjukkan server worker suara hampir habis memori,
+  #     kembali ke mesin lama (proses baru per bait, sama seperti sebelum Bab 10):
+  #
+  # text-to-speech:
+  #   environment:
+  #     TTS_ENGINE: "cli"
