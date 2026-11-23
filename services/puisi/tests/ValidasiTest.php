@@ -8,6 +8,36 @@ use Puisi\Validasi;
 
 final class ValidasiTest extends TestCase
 {
+    public function testKunciIdempotensiOpsionalDanUuidDiterima(): void
+    {
+        self::assertNull(Validasi::kunciIdempotensi(null));
+        self::assertNull(Validasi::kunciIdempotensi('   '));
+        self::assertSame('0b8f8a3e-5c1d-4e8a-9f00-1234567890ab',
+            Validasi::kunciIdempotensi(' 0b8f8a3e-5c1d-4e8a-9f00-1234567890ab '));
+    }
+
+    public function testKunciIdempotensiTidakSahDitolak(): void
+    {
+        foreach (['pendek', str_repeat('a', 65), 'ada spasi di sini', "kunci'; DROP"] as $kunci) {
+            try {
+                Validasi::kunciIdempotensi($kunci);
+                self::fail('Seharusnya ditolak: ' . $kunci);
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('Idempotency-Key', $e->getMessage());
+            }
+        }
+    }
+
+    public function testSidikSamaUntukIsiSamaDanBedaUntukIsiBeda(): void
+    {
+        $a = Validasi::puisiBaru(['judul' => 'Senja', 'isi' => 'Langit jingga', 'tgl_submit' => '2026-11-23']);
+        $b = Validasi::puisiBaru(['judul' => ' Senja ', 'isi' => 'Langit jingga', 'tgl_submit' => '2026-11-23']);
+        $c = Validasi::puisiBaru(['judul' => 'Senja', 'isi' => 'Langit kelabu', 'tgl_submit' => '2026-11-23']);
+        self::assertSame(Validasi::sidik($a), Validasi::sidik($b));
+        self::assertNotSame(Validasi::sidik($a), Validasi::sidik($c));
+        self::assertSame(64, strlen(Validasi::sidik($a)));
+    }
+
     public function testJudulAtauIsiKosongDitolak(): void
     {
         foreach ([

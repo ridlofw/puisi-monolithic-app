@@ -50,18 +50,48 @@ final class PuisiRepo
     }
 
     /**
-     * INSERT puisi dan INSERT outbox dalam satu transaksi atomik.
+     * Cari kiriman sebelumnya dengan kunci idempotensi yang sama. Dibaca dari primary agar
+     * tidak tertinggal replikasi.
+     *
+     * @return ?int puisi_id kiriman sebelumnya, null bila kunci belum pernah dipakai
+     * @throws KonflikIdempotensi bila kunci sama dipakai untuk isi berbeda
+     */
+    public static function cariKirimanSebelumnya(PDO $pdo, string $userId, string $kunci, string $sidik): ?int
+    {
+        $stmt = $pdo->prepare('SELECT puisi_id, sidik FROM idempotensi WHERE user_id = :u AND kunci = :k');
+        $stmt->execute([':u' => $userId, ':k' => $kunci]);
+        $baris = $stmt->fetch();
+        if (!is_array($baris)) {
+            return null;
+        }
+        if (!hash_equals((string) $baris['sidik'], $sidik)) {
+            throw new KonflikIdempotensi('Idempotency-Key ini sudah dipakai untuk puisi dengan isi berbeda.');
+        }
+        return (int) $baris['puisi_id'];
+    }
+
+    /**
+     * INSERT puisi, INSERT outbox, dan bila ada INSERT idempotensi dalam satu transaksi atomik.
+     * Kiriman ulang dengan kunci yang sama mengembalikan puisi yang sudah ada tanpa event baru.
      *
      * @param array{sub: string, username: string, nama: string} $klaim
      * @param array{judul: string, isi: string, tgl_submit: string, kategori: ?string, keyword: ?string, file_gambar: ?string} $input
+     * @return array{id: int, ulang: bool}
      */
-    public static function simpanDenganOutbox(array $klaim, array $input, string $correlationId): int
+    public static function simpanDenganOutbox(array $klaim, array $input, string $correlationId, ?string $kunci = null): array
     {
         $correlationId = trim($correlationId) !== '' ? trim($correlationId) : self::uuidV4();
+        $sidik         = Validasi::sidik($input);
 
         for ($percobaan = 1; $percobaan <= 2; $percobaan++) {
             try {
                 $pdo = Db::tulis();
+                if ($kunci !== null) {
+                    $sebelumnya = self::cariKirimanSebelumnya($pdo, (string) $klaim['sub'], $kunci, $sidik);
+                    if ($sebelumnya !== null) {
+                        return ['id' => $sebelumnya, 'ulang' => true];
+                    }
+                }
                 $pdo->beginTransaction();
 
                 $stmtPuisi = $pdo->prepare(
@@ -114,14 +144,39 @@ final class PuisiRepo
                     ':payload'     => json_encode($amplop, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ]);
 
+                if ($kunci !== null) {
+                    // kiriman kembar yang bersamaan berebut primary key yang sama; yang kalah mendapat 23000
+                    $pdo->prepare(
+                        'INSERT INTO idempotensi (user_id, kunci, sidik, puisi_id)
+                         VALUES (:user_id, :kunci, :sidik, :puisi_id)'
+                    )->execute([
+                        ':user_id'  => $klaim['sub'],
+                        ':kunci'    => $kunci,
+                        ':sidik'    => $sidik,
+                        ':puisi_id' => $puisiId,
+                    ]);
+                }
+
                 $pdo->commit();
-                return $puisiId;
+                return ['id' => $puisiId, 'ulang' => false];
+            } catch (KonflikIdempotensi $e) {
+                throw $e;
             } catch (\Throwable $e) {
                 if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
                     try {
                         $pdo->rollBack();
                     } catch (\Throwable) {
                     }
+                }
+                if ($kunci !== null && $e instanceof \PDOException && $e->getCode() === '23000') {
+                    $sebelumnya = self::cariKirimanSebelumnya($pdo, (string) $klaim['sub'], $kunci, $sidik);
+                    if ($sebelumnya !== null) {
+                        return ['id' => $sebelumnya, 'ulang' => true];
+                    }
+                }
+                if (Skema::tabelHilang($e) && $percobaan === 1) {
+                    Skema::pastikan(Db::tulis());
+                    continue;
                 }
                 Db::putus();
                 if ($percobaan === 2) {

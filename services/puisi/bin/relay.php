@@ -8,6 +8,7 @@ use Puisi\Db;
 use Puisi\Konfig;
 use Puisi\Log;
 use Puisi\Metrik;
+use Puisi\Skema;
 
 putenv('NAMA_LAYANAN=poem-relay');
 $_ENV['NAMA_LAYANAN'] = 'poem-relay';
@@ -36,8 +37,16 @@ $tutupAmqp = static function () use (&$koneksiAmqp, &$kanalAmqp): void {
 
 Log::info('poem-relay dimulai');
 
+$skemaSiap = false;
+
 while (true) {
     try {
+        if (!$skemaSiap) {
+            Skema::pastikan(Db::tulis());
+            $skemaSiap = true;
+            Log::info('skema tambahan poem-db siap', ['tabel' => 'idempotensi']);
+        }
+
         if ($kanalAmqp === null || $koneksiAmqp === null || !$koneksiAmqp->isConnected()) {
             $sambungan   = Amqp::sambung();
             $koneksiAmqp = $sambungan['koneksi'];

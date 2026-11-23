@@ -114,13 +114,13 @@ window.addEventListener('DOMContentLoaded', function () {
     var elKategori = document.getElementById('puisi-kategori');
     if (elKategori) {
         elKategori.removeAttribute('required');
-        elKategori.placeholder = 'Opsional — diisi otomatis bila kosong';
+        elKategori.placeholder = 'Opsional, diisi otomatis bila kosong';
     }
 
     var elKeyword = document.getElementById('puisi-keyword');
     if (elKeyword) {
         elKeyword.removeAttribute('required');
-        elKeyword.placeholder = 'Opsional — diisi otomatis bila kosong';
+        elKeyword.placeholder = 'Opsional, diisi otomatis bila kosong';
     }
 
     var elKutipan = document.getElementById('puisi-kutipan');
@@ -143,11 +143,60 @@ window.addEventListener('DOMContentLoaded', function () {
         document.getElementById('status-preview').textContent =
             'Preview CDN tidak aktif pada mode lokal.';
     });
+
+    // isi berubah berarti kiriman baru, jadi kunci idempotensi lama tidak boleh dipakai lagi
+    document.getElementById('form-puisi').addEventListener('input', function () {
+        kunciKirim = null;
+    });
 });
 
 // ============================================
 // SUBMIT PUISI KE POST /api/puisi
 // ============================================
+
+// Satu kunci per draf. Kiriman ulang karena jaringan putus atau 5xx memakai kunci yang sama,
+// sehingga poem-service tidak membuat puisi ganda (Idempotency-Key, Bab 11.6).
+var kunciKirim = null;
+var MAKS_KIRIM = 3;
+
+function buatKunciIdempotensi() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 14);
+}
+
+function tunda(ms) {
+    return new Promise(function (selesai) { setTimeout(selesai, ms); });
+}
+
+// backoff 0,5 s lalu 1 s dengan jitter 20 persen
+function jedaKirimUlang(percobaan) {
+    return 500 * Math.pow(2, percobaan - 1) * (0.8 + Math.random() * 0.4);
+}
+
+function kirimPuisiIdempoten(muatan, kunci, percobaan) {
+    return panggil('/api/puisi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': kunci },
+        body: JSON.stringify(muatan)
+    })
+        .then(function (res) {
+            if (res.status >= 500 && percobaan < MAKS_KIRIM) {
+                return tunda(jedaKirimUlang(percobaan)).then(function () {
+                    return kirimPuisiIdempoten(muatan, kunci, percobaan + 1);
+                });
+            }
+            return res;
+        }, function (err) {
+            if (percobaan < MAKS_KIRIM) {
+                return tunda(jedaKirimUlang(percobaan)).then(function () {
+                    return kirimPuisiIdempoten(muatan, kunci, percobaan + 1);
+                });
+            }
+            throw err;
+        });
+}
 
 function renderGambarBilaTersedia(judul, kutipan) {
     if (!KONFIG.cdn || kutipan === '') {
@@ -192,6 +241,11 @@ function prosesSubmitPuisi(event) {
         return false;
     }
 
+    if (kunciKirim === null) {
+        kunciKirim = buatKunciIdempotensi();
+    }
+    var kunci = kunciKirim;
+
     var tombol = document.getElementById('btn-kirim-puisi');
     tombol.disabled = true;
     tombol.textContent = KONFIG.cdn ? 'Menyimpan gambar...' : 'Mengirim puisi...';
@@ -208,11 +262,7 @@ function prosesSubmitPuisi(event) {
                 file_gambar: namaFileGambar
             };
 
-            return panggil('/api/puisi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(muatan)
-            });
+            return kirimPuisiIdempoten(muatan, kunci, 1);
         })
         .then(function (res) {
             return res.json().then(function (body) {
@@ -226,6 +276,7 @@ function prosesSubmitPuisi(event) {
                     data.pesan || 'Puisi diterima dan sedang dianalisis di latar belakang.',
                     'sukses'
                 );
+                kunciKirim = null;
                 document.getElementById('form-puisi').reset();
                 document.getElementById('puisi-tgl').value = new Date().toISOString().split('T')[0];
                 perbaruiPreview();
@@ -233,6 +284,10 @@ function prosesSubmitPuisi(event) {
                     muatDaftarPuisi();
                 }
             } else {
+                // 4xx berarti isi atau kunci ditolak; kiriman berikutnya memakai kunci baru
+                if (hasil.kode >= 400 && hasil.kode < 500) {
+                    kunciKirim = null;
+                }
                 tampilkanPesan(data.pesan || 'Gagal mengirim puisi.', 'error');
             }
         })

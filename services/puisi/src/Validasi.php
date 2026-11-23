@@ -50,5 +50,36 @@ final class Validasi
             'file_gambar' => $fileGambar !== '' ? $fileGambar : null,
         ];
     }
+
+    /**
+     * Header Idempotency-Key bersifat opsional. Bila dikirim, wajib 8 sampai 64 karakter
+     * huruf, angka, garis bawah, atau tanda hubung (UUID memenuhi aturan ini).
+     */
+    public static function kunciIdempotensi(?string $nilai): ?string
+    {
+        if ($nilai === null || trim($nilai) === '') {
+            return null;
+        }
+        $nilai = trim($nilai);
+        if (!preg_match('/^[A-Za-z0-9_-]{8,64}$/', $nilai)) {
+            throw new \InvalidArgumentException('Header Idempotency-Key harus 8 sampai 64 karakter huruf, angka, _ atau -.');
+        }
+        return $nilai;
+    }
+
+    /**
+     * Sidik isi puisi yang sudah divalidasi, untuk membedakan kirim ulang yang sama
+     * dari pemakaian ulang kunci dengan isi berbeda.
+     *
+     * @param array{judul: string, isi: string, tgl_submit: string, kategori: ?string, keyword: ?string, file_gambar: ?string} $input
+     */
+    public static function sidik(array $input): string
+    {
+        $urut = [];
+        foreach (['judul', 'isi', 'tgl_submit', 'kategori', 'keyword', 'file_gambar'] as $k) {
+            $urut[$k] = $input[$k] ?? null;
+        }
+        return hash('sha256', json_encode($urut, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
 }
 
