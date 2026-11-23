@@ -15,6 +15,7 @@ from botocore.config import Config
 import amplop
 from metrik import Metrik, layani
 from store import JobStore, wait_for_database
+import suara
 from suara import synthesize_poem
 
 QUEUE = "q.text-to-speech"
@@ -229,6 +230,12 @@ def main():
     s3.head_bucket(Bucket=os.environ.get("S3_BUCKET", "audio"))
     metrics = Metrik("text-to-speech", QUEUE)
     layani(metrics, int(os.environ.get("PORT_METRIK", "9100")))
+    try:
+        warm_seconds = suara.warm_up()
+        json_log("info", "voice model loaded before the first job", warm_up_seconds=round(warm_seconds, 3),
+                 load_seconds=round(getattr(suara.default_engine(), "load_seconds", 0.0), 3))
+    except suara.SynthesisError as error:
+        json_log("warning", "warm-up failed, the first job will load the model", error=str(error))
     relay = threading.Thread(target=publish_outbox, args=(store, urls), daemon=True)
     relay.start()
 
