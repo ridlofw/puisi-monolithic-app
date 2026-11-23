@@ -1,15 +1,47 @@
 # infrastruktur bersama, selalu menyala tanpa profile. Pemilik: Pison
 services:
-  gateway:
-    image: nginx:alpine
+  # dua gateway aktif-pasif: keepalived memindahkan VIP 10.231.0.10 ke gateway-2 bila gateway mati.
+  # Port host tetap terikat ke satu container di Docker Desktop, jadi gateway-2 juga dibuka di 8081;
+  # di host Linux dengan network_mode host, VIP itulah alamat yang dipakai pengguna
+  gateway: &gateway
+    build: ./gateway
+    image: puisi-gateway:lokal
     ports:
       - "80:80"
+    cap_add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+    environment:
+      GW_NAMA: gateway-1
+      GW_STATUS: MASTER
+      GW_PRIORITAS: "150"
+      GW_SELF: 10.231.0.11
+      GW_PEER: 10.231.0.12
+      GW_VIP: 10.231.0.10
+    networks:
+      default: {}
+      gateway-ha:
+        ipv4_address: 10.231.0.11
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./gateway/proxy-umum.conf:/etc/nginx/proxy-umum.conf:ro
       - ./gateway/rute:/etc/nginx/rute:ro
       - ./web:/usr/share/nginx/html:ro
     restart: unless-stopped
+
+  gateway-2:
+    <<: *gateway
+    ports:
+      - "8081:80"
+    environment:
+      GW_NAMA: gateway-2
+      GW_STATUS: BACKUP
+      GW_PRIORITAS: "100"
+      GW_SELF: 10.231.0.12
+      GW_PEER: 10.231.0.11
+      GW_VIP: 10.231.0.10
+    networks:
+      default: {}
+      gateway-ha:
+        ipv4_address: 10.231.0.12
 
   rabbitmq-1: &rabbitmq
     image: rabbitmq:4-management
@@ -68,3 +100,10 @@ volumes:
   rabbitmq-1:
   rabbitmq-2:
   rabbitmq-3:
+
+networks:
+  # jaringan kecil bersubnet tetap untuk VRRP; puisi_default tetap memakai subnet otomatis Docker
+  gateway-ha:
+    ipam:
+      config:
+        - subnet: 10.231.0.0/24

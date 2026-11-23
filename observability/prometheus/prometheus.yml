@@ -70,6 +70,7 @@ scrape_configs:
       - targets:
           - "http://gateway/api/puisi"
           - "http://gateway/api/search"
+          - "http://gateway-2/sehat-gateway"
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

@@ -11,3 +11,4 @@
 *.php  text eol=lf
 Dockerfile text eol=lf
 enabled_plugins text eol=lf
+*.tmpl text eol=lf

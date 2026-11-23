@@ -44,3 +44,19 @@ internal tim.
   (gateway 47 persen, poem-service sekitar 18 persen per replika). Pencarian yang tidak tertolong cache
   membebani node OpenSearch tunggal, komponen yang juga menjadi titik gagal tunggal. Tiga node OpenSearch
   menyelesaikan keduanya.
+
+### Dengan throttling gateway
+
+Setelah gateway membatasi pencarian 30 request per detik dan kirim puisi 5 per detik per IP, tahap yang
+sama diulang. Karena semua pengguna virtual datang dari satu IP, sekitar 21 persen request (sebagian besar
+pencarian) dijawab 429 dengan JSON, sehingga beban ke OpenSearch ikut tertahan:
+
+| Pengguna | rps | P50 ms | P95 ms | P99 ms | Galat | 429 | SLO |
+|---|---|---|---|---|---|---|---|
+| 10 | 869,7 | 9,6 | 22,6 | 33,3 | 0 % | 21,1 % | ok |
+| 40 | 906,6 | 41,4 | 64,1 | 84,6 | 0 % | 21,5 % | ok |
+| 160 | 901,0 | 174,1 | 230,4 | 268,9 | 0 % | 21,0 % | ok |
+| 320 | 868,2 | 337,9 | 528,2 | 851,9 | 0 % | 20,9 % | **melanggar** |
+
+Throttling melindungi layanan di belakang gateway, tetapi tidak menaikkan kapasitas: titik hancur tetap di
+antara 160 dan 320 pengguna karena antrean kini terbentuk di gateway dan di klien itu sendiri.

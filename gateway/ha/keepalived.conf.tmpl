@@ -1,0 +1,34 @@
+global_defs {
+    router_id NAMA
+    script_user root
+    enable_script_security
+}
+
+vrrp_script cek_nginx {
+    script "/etc/keepalived/cek_nginx.sh"
+    interval 1
+    fall 2
+    rise 2
+}
+
+vrrp_instance gateway_puisi {
+    state STATUS
+    interface ANTARMUKA
+    virtual_router_id 51
+    priority PRIORITAS
+    advert_int 1
+    unicast_src_ip IP_SENDIRI
+    unicast_peer {
+        IP_PASANGAN
+    }
+    authentication {
+        auth_type PASS
+        auth_pass puisi
+    }
+    virtual_ipaddress {
+        VIP/24 dev ANTARMUKA
+    }
+    track_script {
+        cek_nginx
+    }
+}

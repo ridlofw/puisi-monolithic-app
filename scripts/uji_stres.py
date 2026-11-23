@@ -7,6 +7,8 @@
 Setiap pengguna virtual mengirim request tanpa jeda, campuran yang mendekati pola baca aplikasi:
 50 persen galeri, 25 persen detail puisi, 25 persen pencarian dengan kata acak agar sebagian
 tidak tertolong cache. Sebuah tahap dianggap melanggar SLO bila P99 > 500 ms atau galat > 1 persen.
+Jawaban 429 dari throttling gateway bukan galat; persentasenya dilaporkan di kolom tersendiri, dan
+karena semua pengguna virtual datang dari satu IP, throttling per IP ikut menahan mereka.
 Klien berjalan di mesin yang sama, jadi angka mutlak dibatasi oleh mesin itu; yang dicari adalah
 tahap tempat kurva mulai patah.
 """
@@ -43,8 +45,8 @@ def satu_request(maks_id):
         kode = e.code
     except (urllib.error.URLError, OSError):
         kode = 0
-    # 404 detail yang id-nya kosong tetap jawaban sah, bukan galat
-    return time.perf_counter() - mulai, kode == 0 or kode >= 500
+    # 404 detail yang id-nya kosong tetap jawaban sah, bukan galat; 429 dihitung terpisah sebagai throttling
+    return time.perf_counter() - mulai, kode == 0 or kode >= 500, kode == 429
 
 
 def persentil(nilai, p):
@@ -55,17 +57,18 @@ def persentil(nilai, p):
 
 
 def tahap(pengguna, detik, maks_id):
-    durasi, galat = [], 0
+    durasi, galat, dibatasi = [], 0, 0
     kunci = threading.Lock()
     selesai = time.perf_counter() + detik
 
     def pekerja():
-        nonlocal galat
+        nonlocal galat, dibatasi
         while time.perf_counter() < selesai:
-            d, g = satu_request(maks_id)
+            d, g, b = satu_request(maks_id)
             with kunci:
                 durasi.append(d)
                 galat += g
+                dibatasi += b
 
     with concurrent.futures.ThreadPoolExecutor(pengguna) as ex:
         for _ in range(pengguna):
@@ -77,6 +80,7 @@ def tahap(pengguna, detik, maks_id):
         'p95_ms': round(persentil(durasi, 0.95) * 1000, 1),
         'p99_ms': round(persentil(durasi, 0.99) * 1000, 1),
         'galat_persen': round(100.0 * galat / n, 2) if n else 100.0,
+        'dibatasi_persen': round(100.0 * dibatasi / n, 2) if n else 0.0,
     }
     hasil['melanggar_slo'] = hasil['p99_ms'] > SLO_P99 * 1000 or hasil['galat_persen'] > SLO_GALAT * 100
     return hasil
@@ -92,15 +96,15 @@ def main():
     galeri = json.load(urllib.request.urlopen(GATEWAY + '/api/puisi?hal=1', timeout=10))
     maks_id = max([p['id'] for p in (galeri.get('data') or [])] or [1])
 
-    print('%-9s %8s %8s %8s %8s %8s %8s  %s' % ('pengguna', 'request', 'rps', 'P50 ms', 'P95 ms', 'P99 ms',
-                                              'galat %', 'SLO'), flush=True)
+    print('%-9s %8s %8s %8s %8s %8s %8s %8s  %s' % ('pengguna', 'request', 'rps', 'P50 ms', 'P95 ms', 'P99 ms',
+                                                   'galat %', '429 %', 'SLO'), flush=True)
     semua, patah = [], None
     for n in [int(x) for x in a.tahap.split(',') if x.strip()]:
         h = tahap(n, a.detik, maks_id)
         semua.append(h)
-        print('%-9d %8d %8.1f %8.1f %8.1f %8.1f %8.2f  %s' % (
+        print('%-9d %8d %8.1f %8.1f %8.1f %8.1f %8.2f %8.2f  %s' % (
             n, h['request'], h['rps'], h['p50_ms'], h['p95_ms'], h['p99_ms'], h['galat_persen'],
-            'LANGGAR' if h['melanggar_slo'] else 'ok'), flush=True)
+            h['dibatasi_persen'], 'LANGGAR' if h['melanggar_slo'] else 'ok'), flush=True)
         if h['melanggar_slo'] and patah is None:
             patah = n
         time.sleep(3)
