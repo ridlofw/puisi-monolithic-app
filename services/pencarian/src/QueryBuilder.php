@@ -8,14 +8,14 @@ final class QueryBuilder
     public const PER_HALAMAN = 10;
     public const HAL_MAKS    = 1000;
     public const Q_MAKS      = 200;
-    public const PUBLIK      = 'publik';
+    public const PRIVAT      = 'privat';
 
-    //Susun badan search, filter visibilitas selalu terpasang dan tidak bisa dimatikan oleh parameter.
+    //Susun badan search, syarat visibilitas selalu terpasang dan tidak bisa dimatikan oleh parameter.
     public static function bangun(string $q = '', string $genre = '', string $tag = '', string $hal = ''): array
     {
         ['q' => $q, 'genre' => $genre, 'tag' => $tag, 'hal' => $halaman] = self::parameter($q, $genre, $tag, $hal);
 
-        $filter = [['term' => ['visibilitas' => self::PUBLIK]]];
+        $filter = [['exists' => ['field' => 'tgl_submit']]];
         if ($genre !== '') {
             $filter[] = ['term' => ['genre' => $genre]];
         }
@@ -33,7 +33,11 @@ final class QueryBuilder
             'size'      => self::PER_HALAMAN,
             'track_total_hits' => true,
             '_source'   => ['judul', 'penulis', 'genre', 'tag', 'isi'],
-            'query'     => ['bool' => ['must' => [$cocok], 'filter' => $filter]],
+            'query'     => ['bool' => [
+                'must'     => [$cocok],
+                'filter'   => $filter,
+                'must_not' => [['term' => ['visibilitas' => self::PRIVAT]]],
+            ]],
             'highlight' => [
                 'pre_tags'  => ['<mark>'],
                 'post_tags' => ['</mark>'],

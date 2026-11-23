@@ -165,9 +165,10 @@ def main():
     bocor = [n for n, p in pencarian.items() if ada(privat_id, **p)]
     lap.catat('privat-tersembunyi', diproses and not bocor,
               'tidak muncul lewat kata, tag, genre' if not bocor else 'BOCOR lewat: %s' % ', '.join(bocor))
-    bocor = [n for n, p in pencarian.items() if ada(tanpa, **p)]
-    lap.catat('tanpa-tanda', diproses and not bocor,
-              'puisi tanpa visibilitas tidak muncul' if not bocor else 'BOCOR lewat: %s' % ', '.join(bocor))
+    cek = {'kata': pencarian['kata']} if a.worker else pencarian
+    hilang = [n for n, p in cek.items() if not ada(tanpa, **p)]
+    lap.catat('tanpa-tanda', diproses and not hilang,
+              'puisi tanpa visibilitas muncul' if not hilang else 'TIDAK muncul lewat: %s' % ', '.join(hilang))
 
     #3. hasil analisis datang sebelum puisinya: tersembunyi dulu, lengkap setelah puisi tiba
     tag2 = 'tag' + acak(10)

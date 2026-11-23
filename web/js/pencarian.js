@@ -2,7 +2,7 @@
 // pencarian.js
 // Kotak pencarian puisi, memanggil GET /api/search
 // Pemilik: search-service. Wadahnya ada di index.html (#section-pencarian)
-// Hanya puisi publik yang dikembalikan server, frontend tidak ikut menyaring.
+// Puisi privat tidak dikembalikan server, frontend tidak ikut menyaring.
 // ============================================
 
 var JEDA_KETIK_MS = 300;

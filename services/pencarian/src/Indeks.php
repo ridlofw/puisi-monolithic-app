@@ -5,7 +5,7 @@ namespace Pencarian;
 
 final class Indeks
 {
-    //`visibilitas` menentukan boleh tidaknya sebuah puisi muncul di pencarian. Hanya nilai "publik" yang pernah dikembalikan. Dokumen tanpa nilai itu tidak ditemukan.
+    //`visibilitas` menentukan boleh tidaknya sebuah puisi muncul di pencarian. Dokumen bernilai "privat" tidak pernah dikembalikan. Dokumen tanpa nilai itu dianggap publik.
     public static function definisi(): array
     {
         return [

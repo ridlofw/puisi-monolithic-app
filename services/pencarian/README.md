@@ -7,14 +7,15 @@ Pencarian puisi. PHP tanpa framework, OpenSearch lewat REST dengan curl. Pemilik
 | `search-service` (2 replika) | `public/index.php` | `GET /api/search?q=&genre=&tag=&hal=` |
 | `search-consumer` | `bin/consumer.php` | mengonsumsi `q.pencarian-indeks` dan memperbarui indeks |
 
-## Hanya puisi publik yang bisa dicari
+## Puisi privat tidak bisa dicari
 
-Setiap query selalu memuat filter `visibilitas = publik` (`QueryBuilder::bangun`), tidak bisa dimatikan
-lewat parameter. Dokumen tanpa nilai `visibilitas` juga tidak pernah muncul. Nilainya datang dari
-`data.visibilitas` pada `puisi.dibuat` (`publik` atau `privat`).
+Setiap query selalu memuat syarat `must_not visibilitas = privat` dan `exists tgl_submit`
+(`QueryBuilder::bangun`), tidak bisa dimatikan lewat parameter. Puisi tanpa nilai `visibilitas` dianggap
+publik. Nilainya datang dari `data.visibilitas` pada `puisi.dibuat` (`publik` atau `privat`).
 
-- Nilai selain `publik` atau `privat`, atau tidak ada, tidak ditulis. Dokumen baru tetap tersembunyi,
-  dokumen lama tidak berubah.
+- Nilai tidak ada atau `null`: tidak ditulis, puisi dianggap publik dan dokumen lama tidak berubah.
+- `publik` atau `privat`: ditulis setelah huruf kecil dan trim. Nilai lain (`rahasia`, string kosong,
+  bukan teks) ditulis sebagai `privat`, jadi salah tulis menyembunyikan puisi, bukan membukanya.
 - Puisi yang diubah menjadi privat harus menerbitkan `puisi.dibuat` lagi dengan `visibilitas: "privat"`.
   Consumer menimpa nilainya, dan puisi itu hilang dari pencarian.
 - Event analisis tidak pernah menyentuh `visibilitas`.
@@ -32,7 +33,7 @@ Setiap event ditulis lewat `_update` dengan `doc_as_upsert` pada dokumen berid `
 menulis kolomnya sendiri. Akibatnya:
 
 - **Urutan event tidak penting.** Hasil analisis yang datang lebih dulu membuat dokumen sebagian, lalu
-  `puisi.dibuat` melengkapinya. Dokumen sebagian itu belum bisa dicari karena belum punya `visibilitas`.
+  `puisi.dibuat` melengkapinya. Dokumen sebagian itu belum bisa dicari karena belum punya `tgl_submit`, kolom yang hanya ditulis `puisi.dibuat`.
 - **Idempoten.** Event yang sama dua kali menulis nilai yang sama pada id yang sama, jumlah dokumen tetap.
 - **Tidak instan.** OpenSearch me-refresh indeks setiap detik, jadi puisi baru dapat dicari beberapa detik
   setelah event diterima, dan hasil analisis menyusul sesudah worker selesai.
@@ -43,7 +44,7 @@ saat OpenSearch mati, ia hanya menggagalkan pesannya.
 
 ## Cache
 
-Dua lapis, keduanya menjaga aturan "hanya puisi publik" karena yang disimpan adalah jawaban query yang
+Dua lapis, keduanya menjaga aturan "puisi privat tidak muncul" karena yang disimpan adalah jawaban query yang
 sudah difilter.
 
 | Lapis | Di mana | TTL | Dibuang oleh |
