@@ -169,6 +169,32 @@ final class Cache
     }
 
     /**
+     * Beberapa HINCRBY dan HINCRBYFLOAT dalam satu pipeline, untuk histogram yang dibagi semua replika.
+     *
+     * @param array<string, int>   $bulat
+     * @param array<string, float> $pecahan
+     */
+    public static function hTambahBanyak(string $hash, array $bulat, array $pecahan = []): void
+    {
+        try {
+            $r = self::klien();
+            if ($r === null) {
+                return;
+            }
+            $p = $r->multi(\Redis::PIPELINE);
+            foreach ($bulat as $field => $delta) {
+                $p->hIncrBy($hash, (string) $field, $delta);
+            }
+            foreach ($pecahan as $field => $delta) {
+                $p->hIncrByFloat($hash, (string) $field, $delta);
+            }
+            $p->exec();
+        } catch (\Throwable) {
+            self::$klien = null;
+        }
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function hGetAll(string $hash): array

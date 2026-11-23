@@ -37,6 +37,9 @@ function balasJson(int $kodeHttp, string $status, string $pesan, $data = null): 
 {
     global $metode, $ruteMetrik;
     Metrik::catatHttp($metode, $ruteMetrik, $kodeHttp);
+    if (str_starts_with($ruteMetrik, '/api/puisi')) {
+        Metrik::catatDurasi($metode, $ruteMetrik, microtime(true) - (float) ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true)));
+    }
     http_response_code($kodeHttp);
     $badan = [
         'status' => $status,

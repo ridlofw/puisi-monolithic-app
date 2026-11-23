@@ -348,6 +348,144 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Latensi Persentil P50, P95, P99 (Bab 10.1)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "poem-service per rute, SLO P99 < 500 ms",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, max by (le, method, route) (rate(puisi_http_durasi_detik_bucket[5m])))",
+          "legendFormat": "P50 {{method}} {{route}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, max by (le, method, route) (rate(puisi_http_durasi_detik_bucket[5m])))",
+          "legendFormat": "P95 {{method}} {{route}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, max by (le, method, route) (rate(puisi_http_durasi_detik_bucket[5m])))",
+          "legendFormat": "P99 {{method}} {{route}}",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Waktu proses per worker, P95 dan P99",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, worker) (rate(worker_durasi_detik_bucket[5m])))",
+          "legendFormat": "P95 {{worker}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, worker) (rate(worker_durasi_detik_bucket[5m])))",
+          "legendFormat": "P99 {{worker}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          }
+        }
+      ]
     }
   ],
   "refresh": "5s",
@@ -395,6 +533,6 @@
   "timezone": "browser",
   "title": "Ringkasan Observability Aplikasi Puisi",
   "uid": "puisi-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

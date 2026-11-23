@@ -33,6 +33,57 @@ final class Metrik
         Cache::hIncrBy(self::HASH_HTTP, $field, 1);
     }
 
+    private const HASH_DURASI = 'puisi:metrik:durasi';
+
+    /**
+     * Field histogram yang naik untuk satu request: setiap ember dengan batas >= durasi,
+     * ditambah +Inf dan count. Histogram Prometheus bersifat kumulatif.
+     *
+     * @return array<string, int>
+     */
+    public static function emberDurasi(string $metode, string $rute, float $detik): array
+    {
+        $dasar = "{$metode}|{$rute}|";
+        $naik  = [];
+        foreach (self::BATAS as $batas) {
+            if ($detik <= $batas) {
+                $naik[$dasar . $batas] = 1;
+            }
+        }
+        $naik[$dasar . '+Inf']  = 1;
+        $naik[$dasar . 'count'] = 1;
+        return $naik;
+    }
+
+    /** Durasi request API, dibagi semua replika lewat Redis agar P95/P99 mencakup seluruh layanan (Bab 10.1). */
+    public static function catatDurasi(string $metode, string $rute, float $detik): void
+    {
+        Cache::hTambahBanyak(self::HASH_DURASI, self::emberDurasi($metode, $rute, $detik),
+            ["{$metode}|{$rute}|sum" => $detik]);
+    }
+
+    /** @param array<string, string> $data */
+    public static function teksDurasi(array $data): string
+    {
+        $baris = [
+            '# HELP puisi_http_durasi_detik Durasi request API poem-service.',
+            '# TYPE puisi_http_durasi_detik histogram',
+        ];
+        ksort($data);
+        foreach ($data as $field => $nilai) {
+            [$metode, $rute, $jenis] = array_pad(explode('|', (string) $field, 3), 3, '');
+            $label = sprintf('method="%s",route="%s"', addslashes($metode), addslashes($rute));
+            if ($jenis === 'sum') {
+                $baris[] = sprintf('puisi_http_durasi_detik_sum{%s} %s', $label, (string) (float) $nilai);
+            } elseif ($jenis === 'count') {
+                $baris[] = sprintf('puisi_http_durasi_detik_count{%s} %d', $label, (int) $nilai);
+            } else {
+                $baris[] = sprintf('puisi_http_durasi_detik_bucket{%s,le="%s"} %d', $label, $jenis, (int) $nilai);
+            }
+        }
+        return implode("\n", $baris) . "\n";
+    }
+
     public static function catatCache(bool $hit): void
     {
         $kunci = $hit ? 'hit' : 'miss';
@@ -86,7 +137,7 @@ final class Metrik
         $baris[]  = '# TYPE puisi_outbox_pending gauge';
         $baris[]  = "puisi_outbox_pending {$tertunda}";
 
-        return implode("\n", $baris) . "\n";
+        return implode("\n", $baris) . "\n" . self::teksDurasi(Cache::hGetAll(self::HASH_DURASI));
     }
 
     public static function mulaiServerDaemon(string $worker, string $queue, int $port = 9100): void
