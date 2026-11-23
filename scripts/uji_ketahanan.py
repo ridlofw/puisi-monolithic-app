@@ -190,11 +190,49 @@ def tahap_pemutus_opensearch(lap, token):
               'OpenSearch kembali, q=pinang -> %s lapis %s' % (pulih[-1][0], pulih[-1][2]))
 
 
+def antrean(nama):
+    r = subprocess.run([sys.executable, os.path.join(AKAR, 'scripts', 'status_antrian.py')], capture_output=True,
+                       text=True)
+    for baris in r.stdout.splitlines():
+        b = baris.split()
+        if b and b[0] == nama:
+            return int(b[1]) + int(b[2])
+    return -1
+
+
+def tahap_indeks_paralel(lap, token, jumlah=30, batas=60.0):
+    import concurrent.futures
+    penanda = 'uji' + uuid.uuid4().hex[:10]
+    while antrean('q.pencarian-indeks') > 0:
+        time.sleep(1)
+    mulai = time.monotonic()
+
+    def kirim(i):
+        p = puisi('Indeks %s %d' % (penanda, i))
+        p['isi'] = '%s baris pembuka\nbaris kedua nomor %d' % (penanda, i)
+        return http('POST', '/api/puisi', p, token, {'Idempotency-Key': str(uuid.uuid4())})[0]
+
+    with concurrent.futures.ThreadPoolExecutor(10) as ex:
+        kode = list(ex.map(kirim, range(jumlah)))
+    total = 0
+    while time.monotonic() - mulai < 240:
+        k, b, _, _ = http('GET', '/api/search?q=%s&_u=%s' % (penanda, uuid.uuid4().hex[:6]))
+        total = (b or {}).get('total') or 0
+        if total >= jumlah and antrean('q.pencarian-indeks') == 0:
+            break
+        time.sleep(1)
+    durasi = time.monotonic() - mulai
+    lap.catat('indeks-paralel', kode.count(202) == jumlah and total >= jumlah and durasi < batas,
+              '%d puisi (%d event indeks) terindeks dan antrean kosong dalam %.1f s, batas %.0f s'
+              % (total, jumlah * 4, durasi, batas))
+
+
 TAHAP = {
     'idempotensi': tahap_idempotensi,
     'pemutus-db': tahap_pemutus_db,
     'pemutus-auth': tahap_pemutus_auth,
     'pemutus-opensearch': tahap_pemutus_opensearch,
+    'indeks-paralel': tahap_indeks_paralel,
 }
 
 

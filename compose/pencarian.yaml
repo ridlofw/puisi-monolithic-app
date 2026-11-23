@@ -42,6 +42,9 @@ services:
     profiles: ["pencarian", "semua"]
     restart: unless-stopped
     command: ["php", "bin/consumer.php"]
+    # setiap update menunggu refresh indeks sekitar 1 s, jadi throughput dinaikkan dengan consumer paralel
+    deploy:
+      replicas: 3
     healthcheck:
       disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
     environment:

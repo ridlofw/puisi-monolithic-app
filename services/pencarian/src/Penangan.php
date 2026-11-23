@@ -125,7 +125,7 @@ final class Penangan
         Indeks::pastikan($os);
         [$kode, $badan] = $os->minta(
             'POST',
-            '/' . Konfig::INDEKS . '/_update/' . $r['id'] . '?refresh=wait_for',
+            '/' . Konfig::INDEKS . '/_update/' . $r['id'] . '?refresh=wait_for&retry_on_conflict=3',
             ['doc' => $r['doc'], 'doc_as_upsert' => true]
         );
         if ($kode !== 200 && $kode !== 201) {
