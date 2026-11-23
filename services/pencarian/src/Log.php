@@ -16,7 +16,11 @@ final class Log
         ], $konteks);
         $json = json_encode($baris, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json !== false) {
-            fwrite(STDOUT, $json . "\n");
+            // STDOUT hanya ada di CLI; request web lewat Apache memakai php://stdout seperti poem-service
+            $aliran = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'wb');
+            if ($aliran !== false) {
+                fwrite($aliran, $json . "\n");
+            }
         }
     }
 

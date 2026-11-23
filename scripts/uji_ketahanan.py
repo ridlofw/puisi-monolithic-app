@@ -158,10 +158,43 @@ def tahap_pemutus_auth(lap, token):
     lap.catat('pemutus-auth-pulih', pulih[-1] == 201, 'auth-db kembali, register -> %s' % pulih)
 
 
+def cari(q):
+    # parameter _u membuat kunci proxy_cache Nginx unik, supaya yang diuji adalah search-service
+    k, b, h, d = http('GET', '/api/search?q=%s&_u=%s' % (q, uuid.uuid4().hex[:8]))
+    return k, b or {}, {x.lower(): y for x, y in h.items()}.get('x-cache-layer'), d
+
+
+def tahap_pemutus_opensearch(lap, token):
+    naikkan = lambda: compose('exec', '-T', 'redis', 'redis-cli', 'INCR', 'cari:versi')  # noqa: E731
+    naikkan()
+    k0, _, lapis0, _ = cari('pinang')
+    compose('pause', 'opensearch')
+    try:
+        naikkan()
+        k1, b1, lapis1, _ = cari('pinang')
+        lap.catat('pemutus-os-degradasi', k1 == 200 and lapis1 == 'redis-basi' and b1.get('basi') is True,
+                  'OpenSearch di-pause, q=pinang -> %s lapis %s (sebelumnya %s dari %s)' % (k1, lapis1, k0, lapis0))
+        hasil = [cari('tidakada' + uuid.uuid4().hex[:6]) for _ in range(12)]
+    finally:
+        compose('unpause', 'opensearch')
+    kode = sorted({k for k, _, _, _ in hasil})
+    durasi = [d for _, _, _, d in hasil]
+    lambat = sum(1 for d in durasi if d > 1.5)
+    akhir = sorted(durasi[-6:])[3]
+    lap.catat('pemutus-os-gagal-cepat', kode == [503] and lambat <= 8 and akhir < 0.2,
+              '12 query tanpa salinan -> %s, %d lambat > 1,5 s, median 6 terakhir %.0f ms'
+              % (kode, lambat, akhir * 1000))
+    time.sleep(12)
+    pulih = [cari('pinang') for _ in range(4)]
+    lap.catat('pemutus-os-pulih', pulih[-1][0] == 200 and pulih[-1][2] in ('opensearch', 'redis'),
+              'OpenSearch kembali, q=pinang -> %s lapis %s' % (pulih[-1][0], pulih[-1][2]))
+
+
 TAHAP = {
     'idempotensi': tahap_idempotensi,
     'pemutus-db': tahap_pemutus_db,
     'pemutus-auth': tahap_pemutus_auth,
+    'pemutus-opensearch': tahap_pemutus_opensearch,
 }
 
 

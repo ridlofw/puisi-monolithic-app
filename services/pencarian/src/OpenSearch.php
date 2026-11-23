@@ -6,11 +6,33 @@ namespace Pencarian;
 //Client REST OpenSearch tipis di atas curl
 class OpenSearch
 {
-    public function __construct(private readonly string $url = '')
+    public const TUJUAN = 'opensearch';
+
+    //$pemutus dipasang untuk request web saja; consumer tetap mencoba agar event diulang lewat antrean
+    public function __construct(private readonly string $url = '', private readonly ?Pemutus $pemutus = null)
     {
     }
 
     public function minta(string $metode, string $jalur, ?array $badan = null): array
+    {
+        if ($this->pemutus !== null && !$this->pemutus->bolehCoba(self::TUJUAN)) {
+            throw new PemutusTerbuka('Circuit breaker OpenSearch terbuka, gagal cepat.');
+        }
+        try {
+            [$kode, $json] = $this->kirim($metode, $jalur, $badan);
+        } catch (\Throwable $e) {
+            $this->pemutus?->gagal(self::TUJUAN);
+            throw $e;
+        }
+        if ($kode >= 500 || $kode === 0) {
+            $this->pemutus?->gagal(self::TUJUAN);
+        } else {
+            $this->pemutus?->sukses(self::TUJUAN);
+        }
+        return [$kode, $json];
+    }
+
+    private function kirim(string $metode, string $jalur, ?array $badan): array
     {
         $dasar = $this->url !== '' ? $this->url : Konfig::urlOpenSearch();
         $ch = curl_init($dasar . $jalur);

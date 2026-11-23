@@ -9,6 +9,14 @@ use PHPUnit\Framework\TestCase;
 
 final class CacheTest extends TestCase
 {
+    public function testKeyBasiTidakBergantungVersi(): void
+    {
+        $p = ['q' => 'Pinang', 'genre' => '', 'tag' => '', 'hal' => 1];
+        self::assertMatchesRegularExpression('/^cari:basi:[0-9a-f]{40}$/', Cache::kunciBasi($p));
+        self::assertSame(Cache::kunciBasi($p), Cache::kunciBasi(['hal' => 1, 'tag' => '', 'genre' => '', 'q' => 'pinang']));
+        self::assertSame(substr(Cache::kunci(3, $p), 8), substr(Cache::kunciBasi($p), 10));
+    }
+
     public function testKeySamaUntukUrutanParameterBerbeda(): void
     {
         $a = Cache::kunci(3, ['q' => 'lari', 'genre' => 'pantun', 'tag' => '', 'hal' => 1]);

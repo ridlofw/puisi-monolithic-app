@@ -60,6 +60,29 @@ final class Cache
         });
     }
 
+    public const TTL_BASI = 1800;
+
+    //Salinan cadangan tanpa versi, hanya disajikan saat OpenSearch tidak tersedia (degradasi halus, Bab 11.2)
+    public static function kunciBasi(array $param): string
+    {
+        return 'cari:basi:' . substr(self::kunci(0, $param), strlen('cari:v0:'));
+    }
+
+    public static function simpanBasi(array $param, array $nilai): void
+    {
+        $json = json_encode($nilai, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return;
+        }
+        $kunci = self::kunciBasi($param);
+        self::coba(static fn (\Redis $r): bool => (bool) $r->setex($kunci, self::TTL_BASI, $json));
+    }
+
+    public static function ambilBasi(array $param): ?array
+    {
+        return self::ambil(self::kunciBasi($param));
+    }
+
     //Dipanggil consumer setelah indeks berubah. @return bool false bila Redis tidak terjangkau
     public static function naikkanVersi(): bool
     {
