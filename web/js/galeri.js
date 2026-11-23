@@ -127,6 +127,56 @@ function daftarKataKunci(puisi, autoTag) {
     return hasil;
 }
 
+// Bentuk resmi hasil analisis-emosi (kontrak/README.md bagian 3):
+//   {sentimen: {skor, label}, emosi_dominan_per_bait: [...]}
+// Hanya string yang boleh masuk ke teks chip, supaya objek tidak pernah tampil sebagai "[object Object]".
+// Hasilnya berbentuk "percaya (positif)", atau salah satunya saja bila yang lain tidak ada.
+function labelEmosiDariHasil(info) {
+    if (!info || typeof info !== 'object') {
+        return null;
+    }
+
+    function teksBersih(nilai) {
+        return (typeof nilai === 'string' && nilai.trim() !== '') ? nilai.trim() : null;
+    }
+
+    var sentimen = teksBersih(info.sentimen);
+    if (sentimen === null && info.sentimen && typeof info.sentimen === 'object') {
+        sentimen = teksBersih(info.sentimen.label);
+    }
+
+    // Emosi dominan seluruh puisi = emosi yang paling sering menjadi dominan di tiap bait.
+    // Bila seri, yang lebih dulu mencapai jumlah terbanyak yang dipakai.
+    var dominan = null;
+    var daftar = Array.isArray(info.emosi_dominan_per_bait) ? info.emosi_dominan_per_bait : [];
+    var hitung = {};
+    var terbanyak = 0;
+    for (var i = 0; i < daftar.length; i++) {
+        var emosi = teksBersih(daftar[i]);
+        if (emosi === null) {
+            continue;
+        }
+        hitung[emosi] = (hitung[emosi] || 0) + 1;
+        if (hitung[emosi] > terbanyak) {
+            terbanyak = hitung[emosi];
+            dominan = emosi;
+        }
+    }
+
+    // Cadangan untuk bentuk lama yang berupa string tunggal
+    if (dominan === null) {
+        dominan = teksBersih(info.emosi) || teksBersih(info.emosi_dominan);
+    }
+    if (sentimen === null) {
+        sentimen = teksBersih(info.label);
+    }
+
+    if (dominan !== null && sentimen !== null) {
+        return dominan + ' (' + sentimen + ')';
+    }
+    return dominan !== null ? dominan : sentimen;
+}
+
 function bangunKartuPuisi(puisi) {
     puisi = puisi || {};
     var analisis = (puisi.analisis && typeof puisi.analisis === 'object') ? puisi.analisis : {};
@@ -186,11 +236,9 @@ function bangunKartuPuisi(puisi) {
         barisStatus.appendChild(buatChip(teksGenre, 'chip-genre'));
     }
 
-    if (infoEmosi && typeof infoEmosi === 'object') {
-        var labelEmosi = infoEmosi.emosi || infoEmosi.sentimen || infoEmosi.emosi_dominan || infoEmosi.label || null;
-        if (labelEmosi) {
-            barisStatus.appendChild(buatChip('Emosi: ' + labelEmosi, 'chip-emosi'));
-        }
+    var labelEmosi = labelEmosiDariHasil(infoEmosi);
+    if (labelEmosi) {
+        barisStatus.appendChild(buatChip('Emosi: ' + labelEmosi, 'chip-emosi'));
     }
 
     isi.appendChild(barisStatus);
