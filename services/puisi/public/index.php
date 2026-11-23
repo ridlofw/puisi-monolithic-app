@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use Puisi\Cache;
 use Puisi\Jwt;
+use Puisi\KonflikIdempotensi;
 use Puisi\Konfig;
 use Puisi\Log;
 use Puisi\Metrik;
@@ -36,6 +37,9 @@ function balasJson(int $kodeHttp, string $status, string $pesan, $data = null): 
 {
     global $metode, $ruteMetrik;
     Metrik::catatHttp($metode, $ruteMetrik, $kodeHttp);
+    if (str_starts_with($ruteMetrik, '/api/puisi')) {
+        Metrik::catatDurasi($metode, $ruteMetrik, microtime(true) - (float) ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true)));
+    }
     http_response_code($kodeHttp);
     $badan = [
         'status' => $status,
@@ -111,18 +115,32 @@ try {
 
         try {
             $input = Validasi::puisiBaru(bacaInputJson());
+            $kunci = Validasi::kunciIdempotensi($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? null);
         } catch (\InvalidArgumentException $e) {
             balasJson(400, 'error', $e->getMessage());
         }
 
-        $puisiId = PuisiRepo::simpanDenganOutbox($klaim, $input, $correlationId);
-        Cache::invalidasi(null);
+        try {
+            $hasil = PuisiRepo::simpanDenganOutbox($klaim, $input, $correlationId, $kunci);
+        } catch (KonflikIdempotensi $e) {
+            balasJson(409, 'error', $e->getMessage());
+        }
+        $puisiId = $hasil['id'];
 
-        Log::info('puisi disimpan ke database dan outbox', [
-            'correlation_id' => $correlationId,
-            'puisi_id'       => $puisiId,
-            'penulis'        => $klaim['nama'],
-        ]);
+        if ($hasil['ulang']) {
+            header('Idempotent-Replay: true');
+            Log::info('kiriman ulang dengan Idempotency-Key yang sama, puisi tidak dibuat lagi', [
+                'correlation_id' => $correlationId,
+                'puisi_id'       => $puisiId,
+            ]);
+        } else {
+            Cache::invalidasi(null);
+            Log::info('puisi disimpan ke database dan outbox', [
+                'correlation_id' => $correlationId,
+                'puisi_id'       => $puisiId,
+                'penulis'        => $klaim['nama'],
+            ]);
+        }
 
         balasJson(202, 'sukses', 'Puisi diterima dan sedang diproses.', [
             'id'     => $puisiId,

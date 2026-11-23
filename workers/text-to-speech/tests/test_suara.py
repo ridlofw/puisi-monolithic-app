@@ -104,5 +104,72 @@ class TestAudioHandling(unittest.TestCase):
             self.assertGreaterEqual(result.processing_seconds, 0)
 
 
+class FakeChunk:
+    def __init__(self, payload):
+        self.sample_rate = 100
+        self.sample_width = 2
+        self.sample_channels = 1
+        self.audio_int16_bytes = payload
+
+
+class FakeVoice:
+    def __init__(self):
+        self.config = type("Config", (), {"sample_rate": 100})()
+        self.lines = []
+
+    def synthesize(self, line):
+        self.lines.append(line)
+        # two sentence chunks per line, like Piper does for "A. B."
+        return [FakeChunk(b"\x01\x00" * 5), FakeChunk(b"\x02\x00" * 5)]
+
+
+class TestResidentEngine(unittest.TestCase):
+    def test_model_is_loaded_once_for_many_stanzas(self):
+        loads = []
+        voice = FakeVoice()
+
+        def loader(model):
+            loads.append(model)
+            return voice
+
+        engine = suara.ResidentPiperEngine(model="/model.onnx", loader=loader)
+        with tempfile.TemporaryDirectory() as directory:
+            for index in range(3):
+                engine.synthesize("baris satu\nbaris dua", Path(directory) / f"s{index}.wav")
+        self.assertEqual(loads, ["/model.onnx"])
+        self.assertEqual(voice.lines, ["baris satu", "baris dua"] * 3)
+
+    def test_output_matches_cli_silence_rule(self):
+        engine = suara.ResidentPiperEngine(loader=lambda _: FakeVoice(), sentence_silence=0.1)
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "out.wav"
+            engine.synthesize("satu\n\n  \ndua", out)
+            with wave.open(str(out), "rb") as wav:
+                self.assertEqual(wav.getframerate(), 100)
+                # per line: 5 frames, 10 frames of silence between the two chunks, 5 frames
+                self.assertEqual(wav.getnframes(), 2 * (5 + 10 + 5))
+
+    def test_engine_errors_become_synthesis_errors(self):
+        def broken(_):
+            raise RuntimeError("model missing")
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(suara.SynthesisError):
+                suara.ResidentPiperEngine(loader=broken).synthesize("teks", Path(directory) / "x.wav")
+
+    def test_no_audio_is_rejected(self):
+        class Silent(FakeVoice):
+            def synthesize(self, line):
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(suara.SynthesisError):
+                suara.ResidentPiperEngine(loader=lambda _: Silent()).synthesize("teks", Path(directory) / "x.wav")
+
+    def test_cli_engine_can_still_be_selected(self):
+        with patch.dict("os.environ", {"TTS_ENGINE": "cli"}), patch.object(suara, "_default_engine", None):
+            self.assertIsInstance(suara.default_engine(), suara.PiperEngine)
+
+
 if __name__ == "__main__":
     unittest.main()

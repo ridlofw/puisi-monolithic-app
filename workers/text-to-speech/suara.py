@@ -60,6 +60,87 @@ class PiperEngine:
             raise SynthesisError("Piper returned success without a WAV file.")
 
 
+SENTENCE_SILENCE_SECONDS = 0.15
+
+
+def _load_piper_voice(model: str):
+    from piper import PiperVoice
+    return PiperVoice.load(model)
+
+
+class ResidentPiperEngine:
+    """Hot start: the voice model is loaded once per worker process and reused for every stanza.
+
+    The CLI engine above starts a new Python process and reloads the ONNX model for every stanza.
+    Output matches the CLI: each non-empty line is synthesized on its own and sentence chunks
+    within a line are separated by the same silence as --sentence-silence.
+    """
+
+    def __init__(self, model: str | Path = MODEL, sentence_silence: float = SENTENCE_SILENCE_SECONDS,
+                 loader=_load_piper_voice):
+        self.model = str(model)
+        self.sentence_silence = sentence_silence
+        self._loader = loader
+        self._voice = None
+        self.load_seconds = 0.0
+
+    def voice(self):
+        if self._voice is None:
+            started = time.monotonic()
+            try:
+                self._voice = self._loader(self.model)
+            except Exception as exc:
+                raise SynthesisError(f"Piper voice could not be loaded: {exc}") from exc
+            self.load_seconds = time.monotonic() - started
+        return self._voice
+
+    def synthesize(self, text: str, output_wav: Path) -> None:
+        voice = self.voice()
+        silence = bytes(int(voice.config.sample_rate * self.sentence_silence) * 2)
+        frames = []
+        fmt = None
+        try:
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                for index, chunk in enumerate(voice.synthesize(line)):
+                    if fmt is None:
+                        fmt = (chunk.sample_rate, chunk.sample_width, chunk.sample_channels)
+                    if index > 0:
+                        frames.append(silence)
+                    frames.append(chunk.audio_int16_bytes)
+        except Exception as exc:
+            raise SynthesisError(f"Piper failed: {exc}") from exc
+        if fmt is None:
+            raise SynthesisError("Piper produced no audio.")
+        with wave.open(str(output_wav), "wb") as wav:
+            wav.setframerate(fmt[0])
+            wav.setsampwidth(fmt[1])
+            wav.setnchannels(fmt[2])
+            wav.writeframes(b"".join(frames))
+
+
+_default_engine = None
+
+
+def default_engine():
+    """One engine per process. TTS_ENGINE=cli keeps the old per-stanza subprocess for comparison."""
+    global _default_engine
+    if _default_engine is None:
+        _default_engine = PiperEngine() if os.environ.get("TTS_ENGINE", "resident") == "cli" else ResidentPiperEngine()
+    return _default_engine
+
+
+def warm_up(engine=None) -> float:
+    """Load the model and synthesize one word before the first job, so no user waits on a cold start."""
+    engine = engine or default_engine()
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="tts-warm-") as temp_dir:
+        engine.synthesize("Halo.", Path(temp_dir) / "warm.wav")
+    return time.monotonic() - started
+
+
 def clean_text(text: str) -> str:
     """Normalize line endings and whitespace while retaining stanza boundaries."""
     if not isinstance(text, str):
@@ -137,7 +218,7 @@ def synthesize_poem(
     destination = Path(output_mp3)
     destination.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    speech_engine = engine or PiperEngine()
+    speech_engine = engine or default_engine()
 
     with tempfile.TemporaryDirectory(prefix="tts-") as temp_dir:
         temp = Path(temp_dir)

@@ -12,7 +12,8 @@ yang berevolusi sepanjang semester:
 ## Arsitektur
 
 ```
-browser -> gateway Nginx (proxy_cache) -> auth-service    -> auth-db
+browser -> VIP -> gateway Nginx x2 (VRRP, proxy_cache, throttling)
+                                       -> auth-service    -> auth-db
                                        -> poem-service    -> poem-db + replika, Redis
                                        -> search-service  -> OpenSearch, Redis
 poem-service --outbox--> RabbitMQ (puisi.events, 3 node)
@@ -25,7 +26,7 @@ Kontrak antarlayanan, yaitu rute API, JWT, bentuk event, queue, dan aturan Compo
 
 | Komponen | Folder | Fragmen Compose | Pemilik |
 |---|---|---|---|
-| Gateway, RabbitMQ, Redis | `gateway/`, `rabbitmq/` | `compose/infra.yaml` | Pison |
+| Gateway x2 (VRRP), RabbitMQ, Redis | `gateway/`, `rabbitmq/` | `compose/infra.yaml` | Pison |
 | Templat worker | [`workers/_templat/`](workers/_templat/README.md) | `compose/templat.yaml` | Pison |
 | auth-service | `services/auth/` | `compose/auth.yaml` | Ifham |
 | poem-service | `services/puisi/` | `compose/puisi.yaml` | Ridlo |
@@ -51,7 +52,9 @@ docker compose --profile semua up -d              # semuanya
 
 | Alamat | Isi |
 |---|---|
-| <http://localhost> | aplikasi |
+| <http://localhost> | aplikasi lewat gateway-1 |
+| <http://localhost:8081> | aplikasi lewat gateway-2, cadangan bila gateway-1 mati |
+| <http://localhost:3000> | Grafana, `admin` / `admin`. Port lain dengan `GRAFANA_PORT=3001` |
 | <http://localhost:15672> | management RabbitMQ, pengguna `puisi`, sandi `puisi`. Node 2 dan 3 di 15673 dan 15674 |
 
 Frontend memakai `/api/auth/` untuk registrasi dan login. Aksi puisi yang belum dipindah tetap
@@ -84,6 +87,9 @@ python scripts/status_antrian.py --node                               # klaster 
 python scripts/kirim_event.py puisi.dibuat kontrak/contoh/pantun.json  # suntik event contoh
 python scripts/intip_event.py --tunggu 10                             # lihat event hasil
 python scripts/uji_e2e.py                                             # alur lengkap, LULUS atau BELUM
+python scripts/uji_pencarian.py --worker                              # indeks dan pencarian
+python scripts/uji_ketahanan.py                                       # pola Bab 10 dan 11, mematikan container sebentar
+python scripts/uji_stres.py                                           # beban bertahap sampai titik hancur
 ```
 
 Yang sudah dibuktikan pada kerangka ini:
@@ -96,6 +102,29 @@ Yang sudah dibuktikan pada kerangka ini:
 | Tiga replika worker, 30 event | terbagi 10, 10, 10 |
 | Vektor JWT | token dari Python dan PHP 8.3 identik byte demi byte |
 | Frontend setelah dipecah per modul | register, login, galeri, reload sesi, submit, logout lewat Chrome headless, tanpa error JavaScript |
+
+## Ketahanan dan Kinerja (Bab 10 dan 11)
+
+Setiap pola dikerjakan oleh pemilik fitur yang paling dekat dengannya, dua tugas per anggota, dan
+dibuktikan oleh `scripts/uji_ketahanan.py` (18 tahap) serta `scripts/uji_stres.py`. Target SLO dan hasil
+stress test ada di [`docs/SLO.md`](docs/SLO.md).
+
+| Bab | Pola | Penanggung jawab | Yang dibangun | Bukti |
+|---|---|---|---|---|
+| 11.3 | Exponential backoff dan jitter | Pison | jeda 1 s, 2 s, maks 4 s dengan jitter 20 persen di semua consumer | pesan rusak tetap masuk DLQ setelah 3 percobaan berjeda |
+| 11.5 | Gateway ganda dan throttling | Pison | `gateway` dan `gateway-2` dengan keepalived VRRP, VIP `10.231.0.10`; batas 5 r/s kirim dan 30 r/s cari per IP | gateway-1 dimatikan: celah terpanjang 4 s, 40 request dilayani gateway-2; 429 JSON |
+| 11.6 | Idempotency-Key | Ridlo | satu kunci per draf di form kirim, tabel `idempotensi` di poem-db, 409 bila isi beda | 10 kiriman kembar bersamaan menjadi 1 puisi |
+| 11.2, 10.2 | Circuit breaker dan koneksi persisten poem-db | Ridlo | breaker per host DB, PDO persisten, batas baca 3 s | Router 1 di-pause: 14 dari 20 POST tetap cepat |
+| 10.3 | Hot start Piper | Ifham | model suara dimuat sekali per worker dan dipanaskan sebelum job pertama | 2,3 s menjadi 0,65 s per puisi dua bait |
+| 11.2, 10.2 | Gagal cepat auth-db | Ifham | breaker auth-db, koneksi persisten | auth-db di-pause: 503 dalam milidetik setelah 3 kegagalan |
+| 11.2 | Circuit breaker OpenSearch dan degradasi halus | Evan | breaker di search-service, salinan hasil 30 menit di Redis | OpenSearch di-pause: kata populer tetap 200 dari `redis-basi` |
+| 10.4 | Consumer indeks paralel | Evan | 3 `search-consumer`, `retry_on_conflict=3` | 120 event terindeks dalam 36,7 s, sebelumnya 99,8 s |
+| 10.1 | Latensi P95 dan P99 | Ray | histogram durasi poem-service, panel persentil, alert `LatensiP99Tinggi` dan `WorkerP99Lambat`, DNS SD | 11 target worker dan 2 poem-service UP, panel worker terisi |
+| 10.5, 11.7 | Stress test dan SLO | Ray | `uji_stres.py`, `docs/SLO.md` dengan error budget 216 menit per bulan | titik jenuh sekitar 10 pengguna, SLO patah di antara 160 dan 320 pengguna |
+
+Batas yang tersisa: Docker Desktop mengikat port host ke satu container, jadi VIP hanya terjangkau dari
+jaringan `gateway-ha`; di host Linux, gateway dijalankan dengan `network_mode: host` agar VIP menjadi
+alamat publik. auth-db, Redis, dan OpenSearch masih satu node.
 
 ## Fitur Gambar Puisi (Hands-on Minggu 5)
 

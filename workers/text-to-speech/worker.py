@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import random
 import signal
 import threading
 import time
@@ -14,14 +15,22 @@ from botocore.config import Config
 import amplop
 from metrik import Metrik, layani
 from store import JobStore, wait_for_database
+import suara
 from suara import synthesize_poem
 
 QUEUE = "q.text-to-speech"
 EXCHANGE = "puisi.events"
 MAX_ATTEMPTS = 3
+RETRY_JITTER = 0.2
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(message)s")
 log = logging.getLogger("tts-worker")
 stop_event = threading.Event()
+
+
+def retry_delay(next_attempt, rand=random.uniform):
+    """Backoff before attempt n: 1 s, 2 s, at most 4 s, with 20 percent jitter."""
+    base = min(2 ** max(next_attempt - 2, 0), 4)
+    return base * rand(1 - RETRY_JITTER, 1 + RETRY_JITTER)
 
 
 def json_log(level, message, **context):
@@ -190,8 +199,7 @@ def process_message(channel, method, properties, body, store, s3, metrics):
                      attempt=attempt, error=str(error))
             return
         try:
-            delay = min(2 ** (attempt - 1), 4)
-            time.sleep(delay)
+            time.sleep(retry_delay(attempt + 1))
             headers = dict(getattr(properties, "headers", None) or {})
             headers["x-percobaan"] = attempt + 1
             accepted = channel.basic_publish(
@@ -222,6 +230,12 @@ def main():
     s3.head_bucket(Bucket=os.environ.get("S3_BUCKET", "audio"))
     metrics = Metrik("text-to-speech", QUEUE)
     layani(metrics, int(os.environ.get("PORT_METRIK", "9100")))
+    try:
+        warm_seconds = suara.warm_up()
+        json_log("info", "voice model loaded before the first job", warm_up_seconds=round(warm_seconds, 3),
+                 load_seconds=round(getattr(suara.default_engine(), "load_seconds", 0.0), 3))
+    except suara.SynthesisError as error:
+        json_log("warning", "warm-up failed, the first job will load the model", error=str(error))
     relay = threading.Thread(target=publish_outbox, args=(store, urls), daemon=True)
     relay.start()
 

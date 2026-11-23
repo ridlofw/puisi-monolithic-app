@@ -2,6 +2,10 @@
 
 `suara.py` normalizes poem text, rejects empty and punctuation-only input, splits it at blank lines, synthesizes each stanza with Piper, inserts a configurable silence, combines PCM WAV audio, and encodes/verifies an MP3 with FFmpeg and ffprobe. The Piper adapter sends text on stdin using an argv list; it does not construct a shell command from poem text.
 
+## Hot start
+
+The worker loads the voice model once per process (`ResidentPiperEngine`) and synthesizes one word at startup, so no job pays the cold start. Output follows the CLI rule (each line on its own, `--sentence-silence 0.15` between sentence chunks). Measured in the container on a 2 stanza, 6 line poem: 2.28 to 2.61 s per poem with the per-stanza CLI, 0.64 to 0.65 s resident, model load 0.57 s once. `TTS_ENGINE=cli` switches back to the subprocess engine for comparison.
+
 ## Build and run
 
 ```sh

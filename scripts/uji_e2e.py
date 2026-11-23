@@ -118,10 +118,18 @@ def main():
     else:
         lap.catat('audio', False, 'url_audio belum ada' if detail else 'butuh detail puisi')
 
+    # puisi uji berisi teks yang sama di setiap run, jadi yang baru bisa berada di halaman berikutnya
     kode, isi = http('GET', '/api/search?q=pinang')
-    hasil = (isi or {}).get('data') or []
+    total = (isi or {}).get('total') or 0
+    hasil, hal = list((isi or {}).get('data') or []), 1
+    while id_puisi and kode == 200 and not any(str(h.get('id')) == str(id_puisi) for h in hasil) \
+            and len(hasil) < total and hal < 20:
+        hal += 1
+        kode, isi = http('GET', '/api/search?q=pinang&hal=%d' % hal)
+        hasil += (isi or {}).get('data') or []
     ketemu = any(str(h.get('id')) == str(id_puisi) for h in hasil) if id_puisi else bool(hasil)
-    lap.catat('pencarian', kode == 200 and ketemu, 'GET /api/search?q=pinang -> %s, %d hasil' % (kode, len(hasil)))
+    lap.catat('pencarian', kode == 200 and ketemu,
+              'GET /api/search?q=pinang -> %s, %d hasil, ditemukan di halaman %d' % (kode, total, hal))
 
     lulus = sum(1 for _, l in lap.baris if l)
     print('-- %d dari %d tahap LULUS' % (lulus, len(lap.baris)))

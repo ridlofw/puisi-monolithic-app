@@ -45,7 +45,8 @@ final class TerapkanTest extends TestCase
         foreach (['updated', 'created'] as $hasil) {
             $os = self::palsu(200, $hasil);
             self::assertTrue(Penangan::terapkan(self::amplop(), $os));
-            self::assertContains('POST /puisi/_update/9?refresh=wait_for', $os->jalur);
+            // retry_on_conflict karena beberapa consumer paralel bisa memperbarui dokumen yang sama bersamaan
+        self::assertContains('POST /puisi/_update/9?refresh=wait_for&retry_on_conflict=3', $os->jalur);
         }
     }
 

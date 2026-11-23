@@ -13,7 +13,7 @@ Semua respons JSON memakai bentuk yang sama dengan monolit Tugas 1:
 |---|---|---|
 | `POST /api/auth/register` | auth-service | body `username, password, nama, no_id`. 201, atau 409 bila username sudah ada |
 | `POST /api/auth/login` | auth-service | 200, `data: {token, user: {id, username, nama}}` |
-| `POST /api/puisi` | poem-service | wajib `Authorization: Bearer <token>`. Body `judul, isi, tgl_submit, kategori, keyword, file_gambar`, tiga yang terakhir boleh kosong. 202, `data: {id, status: "diproses"}` |
+| `POST /api/puisi` | poem-service | wajib `Authorization: Bearer <token>`. Body `judul, isi, tgl_submit, kategori, keyword, file_gambar`, tiga yang terakhir boleh kosong. Header `Idempotency-Key` opsional. 202, `data: {id, status: "diproses"}`; 409 bila kunci yang sama dipakai untuk isi berbeda |
 | `GET /api/puisi` | poem-service | galeri publik, di-cache Nginx dan Redis |
 | `GET /api/puisi/{id}` | poem-service | `data: {id, judul, isi, penulis, tgl_submit, kategori, keyword, file_gambar, status_analisis, status_audio, analisis: {<sumber>: <hasil>}, url_audio}` |
 | `GET /api/search?q=&genre=&tag=&hal=` | search-service | `data: [{id, judul, penulis, genre, tag, potongan}]` |
@@ -29,8 +29,12 @@ Header yang membantu demo:
 | `X-Request-ID` | gateway | id unik per request, diteruskan ke layanan dan menjadi `correlation_id` event |
 | `X-Cache-Status` | gateway | `MISS`, `HIT`, `EXPIRED`, atau kosong bila rute tidak di-cache |
 | `X-Cache-Layer` | layanan | `redis`, `db`, atau `opensearch`, lapisan yang menjawab |
+| `Idempotency-Key` | frontend | satu UUID per draf puisi, dipakai ulang saat kirim ulang karena jaringan putus atau 5xx |
+| `Idempotent-Replay` | poem-service | `true` bila kiriman dengan kunci itu sudah pernah disimpan; puisi dan event tidak dibuat lagi |
 
 Bila layanan sebuah rute belum dijalankan, gateway menjawab 503 dengan JSON berbentuk sama.
+Gateway membatasi `POST /api/puisi` 5 request per detik dan `GET /api/search` 30 request per detik per IP;
+kelebihannya dijawab 429 dengan JSON berbentuk sama dan header `Retry-After: 1`.
 
 ## 2. Token
 

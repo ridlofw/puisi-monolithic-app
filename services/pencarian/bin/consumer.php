@@ -12,6 +12,7 @@ use Pencarian\Konfig;
 use Pencarian\Log;
 use Pencarian\OpenSearch;
 use Pencarian\Penangan;
+use Pencarian\Ulang;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -69,7 +70,7 @@ while (true) {
                 }
                 try {
                     $berikut = $percobaan + 1;
-                    sleep(min(1 << max(0, $berikut - 2), 4));
+                    usleep(Ulang::jedaMikro($berikut));
                     $headers[HEADER_PERCOBAAN] = $berikut;
                     $kanal->basic_publish(new AMQPMessage($body, [
                         'content_type'        => 'application/json',

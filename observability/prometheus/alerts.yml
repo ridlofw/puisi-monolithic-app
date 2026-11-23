@@ -45,3 +45,22 @@ groups:
         annotations:
           summary: "Rasio kegagalan worker {{ $labels.worker }} melebihi 10%"
           description: "Worker {{ $labels.worker }} mengalami rasio kegagalan pesan lebih dari 10% dalam rentang 5 menit terakhir."
+
+      # Bab 10.1: rata-rata menyembunyikan ekor, jadi SLO latensi diukur pada persentil 99
+      - alert: LatensiP99Tinggi
+        expr: histogram_quantile(0.99, max by (le, method, route) (rate(puisi_http_durasi_detik_bucket[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 {{ $labels.method }} {{ $labels.route }} melebihi 500 ms"
+          description: "Persentil 99 latensi {{ $labels.method }} {{ $labels.route }} adalah {{ $value }} s selama 5 menit, di atas SLO 500 ms."
+
+      - alert: WorkerP99Lambat
+        expr: histogram_quantile(0.99, sum by (le, worker) (rate(worker_durasi_detik_bucket[5m]))) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 pemrosesan worker {{ $labels.worker }} melebihi 10 s"
+          description: "Persentil 99 waktu proses satu pesan oleh {{ $labels.worker }} adalah {{ $value }} s selama 5 menit."

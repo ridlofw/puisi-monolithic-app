@@ -8,7 +8,8 @@ Observability stack terdiri dari kumpulan komponen yang dideklarasikan pada `com
 
 1. **Prometheus (:9090)**:
    - Mengumpulkan metrik sistem secara periodik setiap 15 detik.
-   - Menggunakan `docker_sd_configs` untuk menemukan seluruh container yang memiliki label `metrics.scrape: "true"` dan port `metrics.port`.
+   - Menggunakan `dns_sd_configs`: DNS Docker mengembalikan IP setiap replika worker (port 9100) dan poem-service (port 8080), sehingga semua instans ditemukan tanpa `docker.sock`. Sebelumnya `docker_sd_configs` ditolak di Docker Desktop Windows dan panel worker kosong. Label `metrics.scrape` tetap dipasang sebagai penanda.
+   - Histogram `puisi_http_durasi_detik` (poem-service) dan `worker_durasi_detik` (worker) dipakai untuk P50, P95, dan P99 (Bab 10.1). Hitungan poem-service dibagi semua replika lewat Redis, jadi query memakai `max by`, bukan `sum`.
    - Mengikis target statis untuk klaster RabbitMQ (port `15692`), Nginx Prometheus Exporter, Redis Exporter, cAdvisor, dan Blackbox Exporter.
 2. **Alertmanager (:9093)**:
    - Mengelola dan merutekan peringatan saat terjadi pelanggaran ambang batas SLO.
@@ -38,6 +39,8 @@ Aturan alert didefinisikan pada `observability/prometheus/alerts.yml`:
 | `LayananTidakMenjawab`| `probe_success == 0` | 1 menit | critical | Endpoint gateway tidak merespons probe HTTP |
 | `LatensiTinggi` | `probe_duration_seconds > 0.5` | 5 menit | warning | Latensi respons gateway melebihi target batas SLO 500ms |
 | `WorkerGagal` | Rasio gagal worker > 10% | 2 menit | warning | Worker mengalami tingkat kegagalan komputasi tinggi |
+| `LatensiP99Tinggi` | P99 `puisi_http_durasi_detik` per rute > 0,5 s | 5 menit | warning | SLO latensi diukur di ekor distribusi, bukan rata-rata |
+| `WorkerP99Lambat` | P99 `worker_durasi_detik` per worker > 10 s | 5 menit | warning | Satu pesan terlalu lama diproses, tanda worker perlu ditambah |
 
 ## 3. Provisioning Grafana
 

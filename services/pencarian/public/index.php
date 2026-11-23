@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 use Pencarian\Cache;
 use Pencarian\Konfig;
 use Pencarian\OpenSearch;
+use Pencarian\Pemutus;
 use Pencarian\QueryBuilder;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -20,7 +21,7 @@ function balas(int $kode, string $status, string $pesan, array $tambahan = []): 
 $metode = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path   = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/') ?: '/';
 
-$os = new OpenSearch();
+$os = new OpenSearch('', Pemutus::bawaan());
 
 if ($path === '/sehat' && $metode === 'GET') {
     try {
@@ -73,13 +74,22 @@ try {
     }
 } catch (\Throwable $e) {
     error_log('search gagal: ' . $e->getMessage() . ' rid=' . preg_replace('/[^A-Za-z0-9._-]/', '', $_SERVER['HTTP_X_REQUEST_ID'] ?? '-'));
+    //degradasi halus: hasil terakhir yang pernah berhasil lebih berguna daripada 503
+    $basi = Cache::ambilBasi($p);
+    if ($basi !== null) {
+        header('X-Cache-Layer: redis-basi');
+        balas(200, 'sukses', 'OpenSearch sedang tidak tersedia, menampilkan hasil tersimpan.', $basi + ['basi' => true]);
+    }
     balas(503, 'error', 'Layanan pencarian sementara tidak tersedia.');
 }
 
 $hasil = QueryBuilder::hasil($respons);
 $isi   = ['data' => $hasil['data'], 'total' => $hasil['total'], 'hal' => $p['hal']];
 if ($kunci !== null && $kode === 200) {
-    Cache::simpan($kunci, $isi); 
+    Cache::simpan($kunci, $isi);
+}
+if ($kode === 200) {
+    Cache::simpanBasi($p, $isi);
 }
 header('X-Cache-Layer: opensearch');
 balas(200, 'sukses', 'Pencarian selesai.', $isi);

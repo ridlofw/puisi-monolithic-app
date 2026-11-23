@@ -189,5 +189,17 @@ class TestConsumer(unittest.TestCase):
         self.assertTrue(connection.closed)
 
 
+class RetryDelayTest(unittest.TestCase):
+    def test_exponential_with_cap(self):
+        mid = lambda a, b: (a + b) / 2.0  # noqa: E731
+        self.assertEqual([worker.retry_delay(n, mid) for n in (2, 3, 4, 5)], [1, 2, 4, 4])
+
+    def test_jitter_stays_within_twenty_percent(self):
+        for _ in range(200):
+            d = worker.retry_delay(3)
+            self.assertGreaterEqual(d, 1.6)
+            self.assertLessEqual(d, 2.4)
+
+
 if __name__ == "__main__":
     unittest.main()

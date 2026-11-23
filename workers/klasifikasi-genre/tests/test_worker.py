@@ -174,6 +174,22 @@ class TestTangani(unittest.TestCase):
         self.assertEqual(self.metrik.diproses, 0)
 
 
+class TestJedaUlang(unittest.TestCase):
+    def test_eksponensial_dengan_batas(self):
+        tengah = lambda a, b: (a + b) / 2.0  # noqa: E731
+        self.assertEqual([worker.jeda_ulang(n, tengah) for n in (2, 3, 4, 5)], [1, 2, 4, 4])
+
+    def test_jitter_dalam_rentang_dua_puluh_persen(self):
+        for n, dasar in ((2, 1), (3, 2)):
+            for _ in range(200):
+                j = worker.jeda_ulang(n)
+                self.assertGreaterEqual(j, dasar * 0.8)
+                self.assertLessEqual(j, dasar * 1.2)
+
+    def test_jitter_menyebar_jadwal(self):
+        self.assertGreater(len({round(worker.jeda_ulang(3), 3) for _ in range(50)}), 10)
+
+
 if __name__ == '__main__':
     unittest.main()
 

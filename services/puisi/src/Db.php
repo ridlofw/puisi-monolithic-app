@@ -39,12 +39,53 @@ final class Db
         $db     = Konfig::dbNama();
         $dsn    = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
 
+        // ATTR_TIMEOUT hanya membatasi connect; node yang membeku menerima TCP tetapi tidak pernah
+        // mengirim greeting, jadi baca jaringan juga dibatasi agar kegagalannya terdeteksi
+        ini_set('mysqlnd.net_read_timeout', Konfig::env('DB_BACA_TIMEOUT', '3'));
+
         return new PDO($dsn, Konfig::dbUser(), Konfig::dbPass(), [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
             PDO::ATTR_TIMEOUT            => 2,
+            // koneksi dipakai ulang oleh proses Apache yang sama (Bab 10.2), tanpa handshake per request
+            PDO::ATTR_PERSISTENT         => Konfig::env('DB_PERSISTEN', '1') === '1',
         ]);
+    }
+
+    /**
+     * Coba host satu per satu, melewati host yang circuit breaker-nya terbuka (Bab 11.2).
+     * $uji mengembalikan true bila koneksi layak dipakai; host yang hidup tetapi tidak layak
+     * (misalnya secondary saat mencari primary) bukan kegagalan.
+     *
+     * @param list<string>          $daftar
+     * @param callable(PDO): bool   $uji
+     * @return array{0: ?PDO, 1: string, 2: ?\Throwable, 3: int}
+     */
+    private static function cobaHost(array $daftar, callable $uji): array
+    {
+        $pemutus = Pemutus::bawaan();
+        $galat   = null;
+        $dicoba  = 0;
+        foreach ($daftar as $hostPort) {
+            $tujuan = 'db-' . $hostPort;
+            if (!$pemutus->bolehCoba($tujuan)) {
+                continue;
+            }
+            $dicoba++;
+            try {
+                $pdo = self::buatPdo($hostPort);
+                $layak = $uji($pdo);
+                $pemutus->sukses($tujuan);
+                if ($layak) {
+                    return [$pdo, $hostPort, null, $dicoba];
+                }
+            } catch (\Throwable $e) {
+                $pemutus->gagal($tujuan);
+                $galat = $e;
+            }
+        }
+        return [null, '', $galat, $dicoba];
     }
 
     /**
@@ -64,19 +105,17 @@ final class Db
             self::$pdoTulis = null;
         }
 
-        $galatTerakhir = null;
-        foreach (Konfig::daftarHostTulis() as $hostPort) {
-            try {
-                $pdo   = self::buatPdo($hostPort);
-                $baris = $pdo->query('SELECT @@super_read_only AS ro')->fetch();
-                if (is_array($baris) && (int) ($baris['ro'] ?? 1) === 0) {
-                    self::$pdoTulis       = $pdo;
-                    self::$hostTulisAktif = $hostPort;
-                    return $pdo;
-                }
-            } catch (\Throwable $e) {
-                $galatTerakhir = $e;
-            }
+        [$pdo, $hostPort, $galatTerakhir, $dicoba] = self::cobaHost(Konfig::daftarHostTulis(), static function (PDO $pdo): bool {
+            $baris = $pdo->query('SELECT @@super_read_only AS ro')->fetch();
+            return is_array($baris) && (int) ($baris['ro'] ?? 1) === 0;
+        });
+        if ($pdo !== null) {
+            self::$pdoTulis       = $pdo;
+            self::$hostTulisAktif = $hostPort;
+            return $pdo;
+        }
+        if ($dicoba === 0) {
+            throw new PDOException('Semua node database tulis sedang diputus circuit breaker, gagal cepat.');
         }
 
         throw new PDOException(
@@ -99,17 +138,17 @@ final class Db
             }
         }
 
-        $galatTerakhir = null;
-        foreach (Konfig::daftarHostBaca() as $hostPort) {
-            try {
-                $pdo = self::buatPdo($hostPort);
-                $pdo->query('SELECT 1');
-                self::$pdoBaca       = $pdo;
-                self::$hostBacaAktif = $hostPort;
-                return $pdo;
-            } catch (\Throwable $e) {
-                $galatTerakhir = $e;
-            }
+        [$pdo, $hostPort, $galatTerakhir, $dicoba] = self::cobaHost(Konfig::daftarHostBaca(), static function (PDO $pdo): bool {
+            $pdo->query('SELECT 1');
+            return true;
+        });
+        if ($pdo !== null) {
+            self::$pdoBaca       = $pdo;
+            self::$hostBacaAktif = $hostPort;
+            return $pdo;
+        }
+        if ($dicoba === 0) {
+            throw new PDOException('Semua node database baca sedang diputus circuit breaker, gagal cepat.');
         }
 
         throw new PDOException(
