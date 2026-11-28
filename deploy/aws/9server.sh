@@ -2,15 +2,21 @@
 # deploy/aws/9server.sh : membuat 9 server t3.small (Amazon Linux 2023), membentuk klaster Docker Swarm, memasang label,
 # membangun image, dan men-deploy stack. Dijalankan dari AWS CloudShell. Server diatur lewat SSM (tanpa kunci SSH).
 #
-#   bash 9server.sh luncurkan   # 9 server di zona a,b,c + Security Group      (butuh ~/kode.tgz untuk langkah 'kode')
+#   Persiapan di CloudShell (sekali): git clone -b <cabang> https://github.com/ridlofw/puisi-monolithic-app.git ~/puisi9/kode
+#   bash 9server.sh luncurkan   # 9 server di zona a,b,c + Security Group (user-data: Docker, git, swap 3 GiB)
 #   bash 9server.sh swarm       # tunggu SSM, bentuk Swarm (3 manager), pasang label
-#   bash 9server.sh kode        # kirim ~/kode.tgz ke server 1 lewat S3
+#   bash 9server.sh kode        # server 1 mengambil kode LANGSUNG dari GitHub (cabang dan commit yang sama dengan ~/puisi9/kode)
+#   bash 9server.sh kode a.tgz  # (cara lama / arsip susulan) kirim arsip ke server 1 lewat bucket S3 sementara
 #   bash 9server.sh image       # registry + membangun 6 image (di latar belakang); lihat 'bash 9server.sh status'
-#   bash 9server.sh deploy      # TAHAP 1: rahasia + docker stack deploy + buang 15 layanan (pencarian dan tts). Untuk 38 layanan lanjutkan dengan tahap 2
-#   bash 9server.sh rabbit      # WAJIB setelah deploy: gabungkan RabbitMQ node 2 dan 3 (tidak otomatis di Swarm). Aman diulang
-#   bash 9server.sh gateway     # image gateway $GATEWAY_TAG (bawaan v4-gw: CDN_URL + rentang IP CloudFront), rolling update
+#   bash 9server.sh deploy      # TAHAP 1: rahasia + docker stack deploy + buang 15 layanan (pencarian dan tts): 28 layanan. Lanjutkan dengan tahap 2
+#   bash 9server.sh rabbit      # WAJIB setelah deploy: gabungkan RabbitMQ node 2 dan 3 (tidak otomatis di Swarm), lengkapi anggota antrean quorum. Aman diulang
+#   bash 9server.sh gambar      # Lambda + bucket S3 gambar kutipan TANPA distribusi CloudFront sendiri (dibuat sekali oleh 'cloudfront')
+#   bash 9server.sh gateway     # image gateway $GATEWAY_TAG (bawaan v4-gw: rentang IP CloudFront, CDN_URL bila ada), rolling update
+#   bash 9server.sh cloudfront  # SATU distribusi dua jalur: halaman dari S3, /fungsi ke Lambda, /api dan /audio ke ALB
 #   bash 9server.sh jalankan 4 'docker ps'   # perintah apa pun di server nomor 4 lewat SSM
-#   bash 9server.sh verifikasi  # klaster MySQL, RabbitMQ, gateway, uji_e2e.py
+#   bash 9server.sh verifikasi  # klaster MySQL, RabbitMQ (+ anggota antrean quorum), Redis Sentinel, gateway, uji_e2e.py
+#   bash 9server.sh redis       # Redis Sentinel: peran tiap node, master menurut tiap Sentinel, TILT
+#   bash 9server.sh ujiredis    # uji failover Redis: master di-scale ke 0, Sentinel memilih master baru, node lama kembali sebagai replika
 #   bash 9server.sh ujibaru     # tabel idempotensi, Idempotency-Key, throttle 429, memori TTS (untuk kode Bab 10 dan 11 Pison)
 #   bash 9server.sh cek         # node, layanan, memori tiap server
 #   (jalankan 'image' TANPA "| tail": tail menahan keluaran sampai perintah selesai; registry bisa 4 menit menarik image pertama)
@@ -33,9 +39,10 @@
 #   bash 9server.sh memori                     # memori semua server sekaligus
 #   bash 9server.sh hitung                     # berapa layanan yang belum penuh (harus 0) dan keadaan node
 #
-# Susunan (3 server per zona-baris; zona a,b,c). RAM tiap server hanya 2 GiB (batas sandbox). Tahap 1 memasang 23 dari 38 layanan; tahap 2
-# melengkapinya menjadi 38 (terbukti 23 Nov 2026, memori di server 7-9 paling ketat: docs/LAPORAN-EKSPERIMEN-AWS.md bagian 3).
-#   s1-s3: infra + auto-tagging + emosi + pencarian (gateway, RabbitMQ 3 node, Redis, dua worker, OpenSearch)   <- manager Swarm
+# Susunan (3 server per zona-baris; zona a,b,c). RAM tiap server hanya 2 GiB (batas sandbox). Tahap 1 memasang 28 dari 43 layanan; tahap 2
+# melengkapinya menjadi 43 (+ registry = 44 di 'hitung'). Sebelum Redis Sentinel (1 layanan redis) angkanya 23 dari 38 (terbukti 23 dan 24 Nov 2026,
+# memori di server 7-9 paling ketat: docs/LAPORAN-EKSPERIMEN-AWS.md bagian 3).
+#   s1-s3: infra + auto-tagging + emosi + pencarian (gateway, RabbitMQ 3 node, Redis 3 node + 3 Sentinel, dua worker, OpenSearch)   <- manager Swarm
 #   s4-s6: puisi + genre                  (poem-db klaster 3 node + router, poem-service, relay, consumer, genre)
 #   s7-s9: auth + tts                     (auth-db dan tts-db klaster 3 node + router, auth-service, SeaweedFS di s7, worker suara)
 #
@@ -48,6 +55,9 @@ TAG="${TAG:-v4}"                       # tag semua image (bangun6.sh, bangun2.sh
 GATEWAY_TAG="${GATEWAY_TAG:-${TAG}-gw}"   # gateway final (CDN_URL + rentang IP CloudFront); override-9server.yaml menunjuk tag ini
 W="$HOME/puisi9"; mkdir -p "$W"
 TSV="$W/servers.tsv"     # nama <tab> instance-id <tab> zona <tab> ip-privat
+KODE_DIR="$W/kode"       # salinan repositori di CloudShell (git clone); cabangnya juga diambil server 1 di langkah 'kode'
+REPO="${REPO:-https://github.com/ridlofw/puisi-monolithic-app.git}"
+STATE_GAMBAR="$W/gambar.state"   # catatan deploy/lambda/siapkan-gambar.sh untuk versi 9 server (versi lama: ~/.puisi-gambar.state)
 
 TATA="1 a infra,auto-tagging,emosi 1
 2 b infra,auto-tagging,emosi 2
@@ -63,7 +73,7 @@ HAPUS_LAYANAN="opensearch opensearch-1 opensearch-2 opensearch-3 opensearch-repl
 bersih() {
   sed -u -E \
     -e 's/(Encoded authorization failure message:)[[:space:]]*[^[:space:]]+/\1 <disamarkan>/g' \
-    -e 's#(assumed-role|user|role)/([A-Za-z0-9+=,.@_-]+)/[^[:space:]"]+#\1/\2/<sesi>#g' \
+    -e 's#:(assumed-role|user|role)/([A-Za-z0-9+=,.@_-]+)/[^[:space:]"]+#:\1/\2/<sesi>#g' \
     -e 's/(AROA|AIDA)[A-Z0-9]{12,}:[^"[:space:],]+/\1:<sesi>/g' \
     -e 's/user[0-9]+=[^"[:space:],]+/<sesi>/g' \
     -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<email>/g' \
@@ -118,7 +128,7 @@ luncurkan() {
 #!/bin/bash
 exec > /var/log/puisi-user-data.log 2>&1
 set -x
-dnf install -y docker
+dnf install -y docker git
 systemctl enable --now docker
 fallocate -l 3G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab
 mkdir -p /opt/puisi
@@ -162,7 +172,7 @@ swarm() {
   [ "${n:-0}" -ge 9 ] 2>/dev/null || gagal "SSM belum melihat 9 server. Mungkin peran instance tidak punya izin SSM, atau agen belum siap."
   echo "==== 2. Menunggu Docker siap di tiap server ===="
   for i in 1 2 3 4 5 6 7 8 9; do
-    printf 's%s: ' "$i"; ssm "$i" "cloud-init status --wait >/dev/null 2>&1; test -f /var/log/puisi-siap && docker --version | head -1" || echo "(belum siap)"
+    printf 's%s: ' "$i"; ssm "$i" "cloud-init status --wait >/dev/null 2>&1; test -f /var/log/puisi-siap && echo \"\$(docker --version | head -1), \$(git --version)\"" || echo "(belum siap)"
   done
   echo "==== 3. Membentuk Swarm ===="
   local S1IP TM TW
@@ -191,11 +201,22 @@ swarm() {
   echo "Selesai. Langkah berikut: unggah kode.tgz ke CloudShell lalu: bash 9server.sh kode"
 }
 
-# kode [berkas.tgz]: kirim arsip ke server 1 lewat S3 dan ekstrak di /opt/puisi. Tanpa argumen: ~/kode.tgz (seluruh kode).
-# Dengan argumen: arsip SUSULAN (hanya berkas yang berubah). Ekstrak menimpa berkas bernama sama; berkas lain tidak disentuh.
-# Jangan mengekstrak arsip penuh baru di atas sistem yang sedang berjalan: berkas yang dipakai Swarm config/secret tidak boleh berubah isinya.
+# kode: tanpa argumen, server 1 mengambil kode LANGSUNG dari GitHub (git clone --depth 1), cabang yang sama dengan salinan di CloudShell
+# ($KODE_DIR), ke /opt/puisi. Tidak ada bucket S3 perantara. Sama dengan deploy/aws/1server.sh (terbukti 28 Nov 2026). Bila /opt/puisi sudah
+# repositori, langkah ini MENOLAK memperbarui: pada sistem yang berjalan berkas sumber Swarm config/secret tidak boleh berubah isinya
+# ("only updates to Labels are allowed"); pakai arsip susulan.
+# kode <berkas.tgz>: (cara lama, juga untuk arsip SUSULAN berisi hanya berkas yang berubah) kirim arsip ke server 1 lewat bucket S3 sementara
+# dan ekstrak di /opt/puisi. Ekstrak menimpa berkas bernama sama; berkas lain tidak disentuh.
 kode() {
-  local F="${1:-$HOME/kode.tgz}"
+  if [ -z "${1:-}" ]; then
+    [ -d "$KODE_DIR/.git" ] || gagal "$KODE_DIR belum ada. Jalankan dulu: git clone -b <cabang> $REPO $KODE_DIR"
+    local CABANG; CABANG="${CABANG:-$(git -C "$KODE_DIR" rev-parse --abbrev-ref HEAD)}"
+    echo "cabang: $CABANG   commit di CloudShell: $(git -C "$KODE_DIR" log -1 --format='%h %s')"
+    ssm 1 "set -e; if [ -d /opt/puisi/.git ]; then echo 'sudah ada repositori di /opt/puisi: tidak diubah (pakai arsip susulan)'; else git clone -q --depth 1 -b $CABANG $REPO /opt/puisi.baru && mkdir -p /opt/puisi && cp -a /opt/puisi.baru/. /opt/puisi/ && rm -rf /opt/puisi.baru; fi; cd /opt/puisi && echo \"commit di server 1: \$(git log -1 --format='%h %s')\" && ls deploy/swarm | head -5" \
+      || gagal "mengambil kode dari GitHub di server 1"
+    return 0
+  fi
+  local F="$1"
   [ -s "$F" ] || gagal "$F tidak ada (unggah lewat Actions, Upload file)"
   local B N; B="$(cat "$W/bucket" 2>/dev/null)"; N="$(basename "$F")"
   if [ -z "$B" ]; then
@@ -263,6 +284,18 @@ rabbit() {
     ssm 1 "docker exec \$(docker ps -qf name=puisi_rabbitmq-1) rabbitmq-queues grow rabbit@rabbitmq-$n all 2>&1 | tail -1"
   done
   ssm 1 "docker exec \$(docker ps -qf name=puisi_rabbitmq-1) rabbitmqctl cluster_status 2>&1 | sed -n '/Running Nodes/,/Versions/p' | grep rabbit@"
+  kuorum perbaiki
+}
+
+# kuorum [perbaiki]: setiap antrean quorum harus beranggota rabbitmq-1, -2, dan -3. Tanpa argumen hanya melapor.
+# Dengan 'perbaiki': anggota yang kurang ditambah dengan add_member. Alasannya: 24 Nov 2026 `grow ... all` tidak menambahkan rabbitmq-3 ke
+# q.tap (hanya 2 anggota) dan harus diperbaiki manual. Antrean yang baru dideklarasikan sesudah `grow` juga tidak ikut tumbuh.
+kuorum() {
+  local fix="${1:-}"
+  ssm 1 "c=\$(docker ps -qf name=puisi_rabbitmq-1); docker exec \$c rabbitmqctl list_queues -q --no-table-headers name type members 2>/dev/null | awk '\$2==\"quorum\"' > /tmp/kuorum.txt; \
+    if [ '$fix' = perbaiki ]; then while read -r q t rest; do for n in 1 2 3; do case \"\$rest\" in *rabbit@rabbitmq-\$n*) ;; *) docker exec \$c rabbitmq-queues add_member -p / \$q rabbit@rabbitmq-\$n 2>&1 | tail -1; echo \"anggota ditambah: \$q <- rabbitmq-\$n\";; esac; done; done < /tmp/kuorum.txt; \
+      docker exec \$c rabbitmqctl list_queues -q --no-table-headers name type members 2>/dev/null | awk '\$2==\"quorum\"' > /tmp/kuorum.txt; fi; \
+    awk '{n++; if (\$0 ~ /rabbitmq-1/ && \$0 ~ /rabbitmq-2/ && \$0 ~ /rabbitmq-3/) ok++; else print \"KURANG ANGGOTA: \" \$0} END{print ok+0 \" dari \" n+0 \" antrean quorum beranggota 3 node\"}' /tmp/kuorum.txt"
 }
 
 # Membangun ulang image gateway final ($GATEWAY_TAG, bawaan ${TAG}-gw): CDN_URL (dari siapkan-gambar.sh) DAN rentang IP CloudFront
@@ -272,10 +305,12 @@ rabbit() {
 # Gateway tahap 1 adalah image ${TAG} (hanya CDN_URL). deploy/aws/override-9server.yaml menunjuk $GATEWAY_TAG supaya `stack2` tidak mengembalikannya.
 # Tanpa 01-cloudfront.conf (gagal membuatnya), throttle Pison (5 POST/detik dan 30 pencarian/detik per IP) menghitung per EDGE CloudFront,
 # bukan per pengunjung; karena itu `&&` di bawah berhenti bila rentang IP gagal dibuat.
+# CDN_URL BOLEH kosong (sejak 28 Nov 2026, pola versi Single): dengan SATU distribusi dua jalur (`gambar` lalu `cloudfront`), pengunjung memuat
+# halaman dari S3 dan cloudfront-dua-jalur.sh menyisipkan alamat distribusi ke api.js yang diunggah; halaman di dalam image gateway tidak
+# dijangkau pengunjung. Rentang IP CloudFront tetap wajib.
 gateway() {
-  local CDN="${CDN_URL:-$(grep '^CDN_URL=' "$HOME/.puisi-gambar.state" 2>/dev/null | cut -d= -f2)}"
-  [ -n "$CDN" ] || gagal "CDN_URL kosong: jalankan siapkan-gambar.sh dulu, atau export CDN_URL=https://dxxxx.cloudfront.net"
-  echo "gateway $GATEWAY_TAG dengan CDN_URL=$CDN"
+  local CDN="${CDN_URL:-$(grep -h '^CDN_URL=' "$STATE_GAMBAR" "$HOME/.puisi-gambar.state" 2>/dev/null | head -1 | cut -d= -f2)}"
+  echo "gateway $GATEWAY_TAG dengan CDN_URL=${CDN:-(kosong: halaman dilayani dari S3 lewat distribusi dua jalur)}"
   SSM_TUNGGU=120 ssm 1 "cd /opt/puisi && bash deploy/swarm/gateway/buat-cloudfront-conf.sh && docker build -q --build-arg CDN_URL=$CDN -f deploy/swarm/Dockerfile.gateway -t localhost:5000/puisi-gateway:$GATEWAY_TAG . | tail -1 && docker push -q localhost:5000/puisi-gateway:$GATEWAY_TAG | tail -1 && docker service update --detach --image localhost:5000/puisi-gateway:$GATEWAY_TAG puisi_gateway | tail -1"
 }
 
@@ -285,12 +320,37 @@ verifikasi() {
   ssm 4 "docker exec \$(docker ps -qf name=puisi_poem-db-1) mysql -uroot -ppoem -N -e 'select member_host,member_state,member_role from performance_schema.replication_group_members' 2>&1 | grep -v Warning"
   echo "==== auth-db (server 7): harus 3 baris ONLINE ===="
   ssm 7 "docker exec \$(docker ps -qf name=puisi_auth-db-1) sh -c 'mysql -uroot -p\$(cat /run/secrets/auth_db_root_password) -N -e \"select member_host,member_state,member_role from performance_schema.replication_group_members\"' 2>&1 | grep -v Warning"
-  echo "==== RabbitMQ: harus 3 node ===="
+  echo "==== RabbitMQ: harus 3 node, semua antrean quorum beranggota 3 node ===="
   ssm 1 "docker exec \$(docker ps -qf name=puisi_rabbitmq-1) rabbitmqctl cluster_status 2>&1 | sed -n '/Running Nodes/,/Versions/p' | grep rabbit@"
+  kuorum
+  echo "==== Redis Sentinel: 1 master + 2 replika, ketiga Sentinel sepakat, tilt 0 ===="
+  redis
   echo "==== gateway ===="
   ssm 1 "curl -s -o /dev/null -w 'healthz=%{http_code}  ' http://localhost/healthz; curl -s http://localhost/api/puisi/sehat; echo"
   echo "==== uji_e2e.py (8 dari 10 LULUS setelah tahap 1; 10 dari 10 setelah tahap 2) ===="
   SSM_TUNGGU=100 ssm 1 "cd /opt/puisi && GATEWAY=http://localhost python3 scripts/uji_e2e.py --tunggu 150 2>&1 | tail -12"
+}
+
+# redis: keadaan Redis Sentinel di Swarm (revisi Hands On 3, S1). Semua pertanyaan dikirim dari container redis-sentinel-1 di server 1 lewat
+# nama layanan (jaringan overlay), jadi cukup satu perintah SSM. Yang benar: tepat 1 master dengan connected_slaves:2, dua replika
+# master_link_status:up, ketiga Sentinel menyebut master yang sama, sentinel_tilt:0. Juga dicetak puisi:galeri:versi di master (naik setiap
+# ada puisi baru: tanda aplikasi menulis ke master yang benar).
+redis() {
+  ssm 1 "s=\$(docker ps -qf name=puisi_redis-sentinel-1.); [ -n \"\$s\" ] || { echo 'redis-sentinel-1 tidak berjalan di server 1'; exit 1; }; \
+    rc() { docker exec \$s redis-cli \"\$@\" 2>&1 | tr -d '\r'; }; : > /tmp/redis.txt; \
+    for n in redis-1 redis-2 redis-3; do echo \"\$n: \$(rc -h \$n -p 6379 INFO replication | grep -E '^(role|connected_slaves|master_host|master_link_status):' | tr '\n' ' ')\" | tee -a /tmp/redis.txt; done; \
+    for t in redis-sentinel-1 redis-sentinel-2 redis-sentinel-3; do echo \"\$t: master=\$(rc -h \$t -p 26379 SENTINEL get-master-addr-by-name puisi | head -1) \$(rc -h \$t -p 26379 INFO sentinel | grep -E '^sentinel_tilt:')\" | tee -a /tmp/redis.txt; done; \
+    m=\$(rc -h redis-sentinel-1 -p 26379 SENTINEL get-master-addr-by-name puisi | head -1); echo \"puisi:galeri:versi di master \$m = \$(rc -h \$m -p 6379 GET puisi:galeri:versi)\"; \
+    nm=\$(grep -c 'role:master' /tmp/redis.txt); ns=\$(grep -c 'role:slave.*master_link_status:up' /tmp/redis.txt); \
+    nsen=\$(grep '^redis-sentinel' /tmp/redis.txt | sed 's/.*master=\([^ ]*\).*/\1/' | sort -u | wc -l); ntilt=\$(grep -c 'sentinel_tilt:0' /tmp/redis.txt); \
+    if [ \"\$nm\" = 1 ] && [ \"\$ns\" = 2 ] && [ \"\$nsen\" = 1 ] && [ \"\$ntilt\" = 3 ]; then echo \"REDIS OK: 1 master (\$m), 2 replika tersambung, 3 Sentinel sepakat, tilt 0\"; else echo \"REDIS PERIKSA: master=\$nm replika-up=\$ns pendapat-sentinel=\$nsen tilt0=\$ntilt\"; fi"
+}
+
+# ujiredis: uji failover Redis Sentinel di Swarm tanpa mematikan server (deploy/aws/uji-redis-sentinel.sh, dijalankan di server 1).
+# Layanan master di-scale ke 0, Sentinel harus memilih master baru tanpa TILT; lalu di-scale ke 1 dan node lama harus kembali sebagai replika
+# (redis/mulai.sh bertanya ke Sentinel lebih dulu). Selama uji, GET /api/puisi lewat gateway lokal sekali per detik.
+ujiredis() {
+  SSM_TUNGGU=120 ssm 1 "cd /opt/puisi && bash deploy/aws/uji-redis-sentinel.sh"
 }
 
 # Pemeriksaan khusus kode Bab 10 dan 11 (Pison). Jalankan SESUDAH tahap 2 dan `verifikasi` (e2e 10 dari 10 lebih dulu). Dijalankan di AWS 23 Nov 2026 (tabel idempotensi 3/3, uji kunci dan throttle 9 dari 9 lulus, memori TTS terbaca).
@@ -401,16 +461,34 @@ cabut() {
 
 # hitung: berapa layanan yang BELUM penuh (replika sekarang lebih kecil dari yang diminta). Job yang sudah selesai ("0/1 (1/1 completed)")
 # dihitung penuh. Jalankan SETELAH memasang apa pun: satu replika yang macet `Pending` (mis. tts-db-router 1/2) tidak kelihatan dari luar.
-# Hasil yang benar setelah tahap 2: "39 layanan penuh, 0 belum; total 39" (38 layanan aplikasi + registry) dan 9 node Ready.
+# Hasil yang benar setelah tahap 2: "44 layanan penuh, 0 belum; total 44" (43 layanan aplikasi + registry) dan 9 node Ready.
+# (Sebelum Redis Sentinel: 39. Setelah tahap 1: 29 = 28 + registry.)
 hitung() {
   ssm 1 "docker service ls --format '{{.Name}} {{.Replicas}}' | awk '/completed\)/{ok++; next} {split(\$2,a,\"/\"); if (a[1]==a[2]) ok++; else {bad++; print \"BELUM PENUH: \" \$0}} END{print ok \" layanan penuh, \" bad+0 \" belum; total \" ok+bad}'; docker node ls --format '{{.Status}} {{.ManagerStatus}}' | sort | uniq -c"
 }
 
+# gambar: Lambda + bucket S3 gambar kutipan (Hands-on 1) TANPA distribusi CloudFront gambar sendiri; satu-satunya distribusi dibuat oleh
+# `cloudfront`. Pola yang sama dengan versi Single (terbukti 28 Nov 2026). LATAR_DIR (bawaan ~/latar) berisi latar1.jpeg dst. dari dosen;
+# bila tidak ada, skrip membuat latar pengganti polos.
+gambar() {
+  [ -f "$KODE_DIR/deploy/lambda/siapkan-gambar.sh" ] || gagal "$KODE_DIR belum berisi repositori (git clone, lihat panduan langkah 1)"
+  ( cd "$KODE_DIR" && STATE_FILE="$STATE_GAMBAR" LATAR_DIR="${LATAR_DIR:-$HOME/latar}" TANPA_CLOUDFRONT=1 bash deploy/lambda/siapkan-gambar.sh "${1:-}" )
+}
+
+# cloudfront [buat|unggah|status|hapus]: SATU distribusi dua jalur (halaman dari S3, /fungsi ke Lambda, /api dan /audio ke ALB).
+# Membutuhkan ~/puisi9/alb-dns (alb.sh buat) dan $STATE_GAMBAR (gambar).
+cloudfront() {
+  [ -f "$KODE_DIR/deploy/aws/cloudfront-dua-jalur.sh" ] || gagal "$KODE_DIR belum berisi repositori (git clone, lihat panduan langkah 1)"
+  rm -rf "$W/web" && cp -r "$KODE_DIR/web" "$W/web"
+  W_DIR="$W" STATE_FILE="$STATE_GAMBAR" WEB_DIR="$W/web" bash "$KODE_DIR/deploy/aws/cloudfront-dua-jalur.sh" "${1:-buat}"
+}
+
 hapus() {
-  [ "${YA:-}" = "1" ] || { echo "Ini MENGHAPUS 9 server dan Security Group puisi-swarm-sg. Jalankan: YA=1 bash 9server.sh hapus"; return 0; }
+  [ "${YA:-}" = "1" ] || { echo "Ini MENGHAPUS 9 server, Security Group puisi-swarm-sg, dan bucket kode sementara (bila ada). Jalankan: YA=1 bash 9server.sh hapus"; return 0; }
   local ids; ids="$(awk -F'\t' '{print $2}' "$TSV" 2>/dev/null | tr '\n' ' ')"
-  [ -n "$ids" ] && aws ec2 terminate-instances --instance-ids $ids --query 'TerminatingInstances[].CurrentState.Name' --output text && aws ec2 wait instance-terminated --instance-ids $ids
-  local sg; sg="$(cat "$W/sg" 2>/dev/null)"; [ -n "$sg" ] && aws ec2 delete-security-group --group-id "$sg" && echo "Security Group dihapus"
+  [ -n "$ids" ] && aws ec2 terminate-instances --instance-ids $ids --query 'TerminatingInstances[].CurrentState.Name' --output text && aws ec2 wait instance-terminated --instance-ids $ids && rm -f "$TSV"
+  local sg; sg="$(cat "$W/sg" 2>/dev/null)"; [ -n "$sg" ] && aws ec2 delete-security-group --group-id "$sg" && echo "Security Group dihapus" && rm -f "$W/sg"
+  local b; b="$(cat "$W/bucket" 2>/dev/null)"; [ -n "$b" ] && aws s3 rb "s3://$b" --force >/dev/null && echo "bucket kode $b dihapus" && rm -f "$W/bucket"
   echo "Selesai."
 }
 
@@ -492,7 +570,12 @@ case "${1:-}" in
   jalankan)  shift; ssm "$@" 2>&1 | bersih ;;      # bash 9server.sh jalankan <no-server> '<perintah>'
   verifikasi) verifikasi 2>&1 | bersih ;;
   ujibaru)   ujibaru 2>&1 | bersih ;;
+  redis)     redis 2>&1 | bersih ;;
+  ujiredis)  ujiredis 2>&1 | bersih ;;
+  kuorum)    shift; kuorum "$@" 2>&1 | bersih ;;    # bash 9server.sh kuorum [perbaiki]
+  gambar)    shift; gambar "$@" 2>&1 | bersih ;;    # bash 9server.sh gambar [hapus]
+  cloudfront) shift; cloudfront "$@" 2>&1 | bersih ;;  # bash 9server.sh cloudfront [buat|unggah|status|hapus]
   cek)       cek 2>&1 | bersih ;;
   hapus)     hapus 2>&1 | bersih ;;
-  *) sed -n '2,20p' "$0" ;;
+  *) sed -n '2,26p' "$0" ;;
 esac
