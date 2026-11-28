@@ -16,6 +16,7 @@
 #   (jalankan 'image' TANPA "| tail": tail menahan keluaran sampai perintah selesai; registry bisa 4 menit menarik image pertama)
 #   bash 9server.sh status      # log pembangunan image
 #   bash 9server.sh hapus       # hapus server dan Security Group yang dibuat skrip ini
+#   bash 9server.sh tarik       # tarik image registry ke setiap server sesuai pool-nya, sebelum deploy (DRY=1: hanya cetak rencana, tanpa AWS)
 #
 # TAG IMAGE (sejak kode Pison Bab 10 dan 11 digabung ke main): semua image dibangun dan dipasang dengan TAG (bawaan v4), gateway final dengan
 # GATEWAY_TAG (bawaan ${TAG}-gw). Contoh memperbarui sistem yang berjalan tanpa menimpa image lama (satu-satunya jalan mundur):
@@ -413,8 +414,68 @@ hapus() {
   echo "Selesai."
 }
 
+# tarik: revisi Hands On 3 (S3). Registry localhost:5000 hanya ada di server 1. Image ditarik lebih dulu ke setiap server yang
+# boleh menjalankannya (pool dari TATA, ditambah pencarian dan tts tahap 2), supaya task yang dijadwal ulang tidak menunggu server 1:
+# stack deploy merujuk image lewat digest, dan Swarm tidak menarik ulang image ber-digest yang sudah ada di server itu.
+# DRY=1 hanya mencetak rencana dan memeriksa bahwa setiap image registry di stack punya pool; tidak memanggil AWS sama sekali.
+POOL_TAHAP2="1 pencarian
+2 pencarian
+3 pencarian
+7 tts
+8 tts
+9 tts"
+
+image_pool() {  # image registry milik satu pool, sesuai placement di deploy/swarm/stack.yaml
+  case "$1" in
+    infra)        echo "puisi-gateway:$TAG puisi-gateway:$GATEWAY_TAG" ;;
+    auto-tagging) echo "puisi-auto-tagging:$TAG" ;;
+    emosi)        echo "puisi-analisis-emosi:$TAG" ;;
+    puisi)        echo "puisi-poem:$TAG" ;;
+    genre)        echo "puisi-klasifikasi-genre:$TAG" ;;
+    auth)         echo "puisi-auth:$TAG" ;;
+    pencarian)    echo "puisi-pencarian:$TAG" ;;
+    tts)          echo "puisi-tts:$TAG" ;;
+  esac
+}
+
+image_server() {  # image_server <no-server>: daftar image localhost:5000 untuk server itu
+  local p
+  for p in $(echo "$TATA" | awk -v n="$1" '$1==n{print $3}' | tr ',' ' ') $(echo "$POOL_TAHAP2" | awk -v n="$1" '$1==n{print $2}'); do
+    image_pool "$p"
+  done | tr ' ' '\n' | sed '/^$/d; s#^#localhost:5000/#' | sort -u | tr '\n' ' '
+}
+
+tarik() {
+  local i semua d akar stack
+  echo "tag image: $TAG, gateway: $GATEWAY_TAG"
+  semua=""
+  for i in 1 2 3 4 5 6 7 8 9; do semua="$semua $(image_server "$i")"; done
+  akar="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)"
+  stack="$akar/deploy/swarm/stack.yaml"
+  if [ -f "$stack" ]; then
+    # setiap image registry di stack (dan override) harus tertarik ke minimal satu server
+    for i in $(cat "$stack" "$akar/deploy/aws/override-9server.yaml" 2>/dev/null | grep -E '^\s*image: .*(REGISTRY|localhost:5000)' \
+        | sed -E 's/.*image: *"?//; s/"$//; s#\$\{REGISTRY:-localhost:5000\}#localhost:5000#; s#\$\{GATEWAY_TAG:-[^}]*\}#'"$GATEWAY_TAG"'#; s#\$\{TAG:-[^}]*\}#'"$TAG"'#' | sort -u); do
+      case " $semua " in *" $i "*) echo "tercakup  $i" ;; *) echo "[PERINGATAN] tidak ditarik ke server mana pun: $i" ;; esac
+    done
+  fi
+  if [ "${DRY:-0}" = "1" ]; then
+    for i in 1 2 3 4 5 6 7 8 9; do echo "s$i: docker pull $(image_server "$i")"; done
+    echo "DRY=1: tidak ada perintah yang dikirim ke AWS."
+    return 0
+  fi
+  d="$(mktemp -d)"
+  for i in 1 2 3 4 5 6 7 8 9; do
+    ( SSM_TUNGGU=200 ssm "$i" "for im in $(image_server "$i"); do docker pull -q \$im >/dev/null 2>&1 && echo \"ok    \$im\" || echo \"GAGAL \$im\"; done" > "$d/$i" 2>&1 ) &
+  done
+  wait
+  for i in 1 2 3 4 5 6 7 8 9; do sed "s/^/s$i: /" "$d/$i"; done
+  rm -rf "$d"
+}
+
 case "${1:-}" in
   luncurkan) luncurkan 2>&1 | bersih ;;
+  tarik)     tarik 2>&1 | bersih ;;
   swarm)     swarm 2>&1 | bersih ;;
   kode)      shift; kode "$@" 2>&1 | bersih ;;     # bash 9server.sh kode [arsip-susulan.tgz]
   image)     image 2>&1 | bersih ;;
@@ -433,5 +494,5 @@ case "${1:-}" in
   ujibaru)   ujibaru 2>&1 | bersih ;;
   cek)       cek 2>&1 | bersih ;;
   hapus)     hapus 2>&1 | bersih ;;
-  *) sed -n '2,19p' "$0" ;;
+  *) sed -n '2,20p' "$0" ;;
 esac
