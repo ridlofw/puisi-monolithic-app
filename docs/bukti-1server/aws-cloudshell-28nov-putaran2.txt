@@ -1,0 +1,196 @@
+# Bukti putaran 2, 28 Nov 2026 (AWS sandbox us-east-1): HAPUS SEMUA, lalu DEPLOY ULANG DARI NOL LEWAT GITHUB
+# Kode: branch ridlo/single-1server commit 21054f6 (diambil dengan git clone, di CloudShell DAN di server).
+# Disalin dari terminal CloudShell (log ~/puisi1/log-hapus-*.txt, log-sisa.txt, log2-*.txt), disaring dari nomor akun dan email.
+# Spasi berurutan diringkas menjadi satu; baris "..." berarti potongan dilewati.
+
+################ A. Membersihkan putaran 1 (panduan bagian 7, tiga perintah apa adanya) ################
+===== log-hapus-1.txt (cloudfront-dua-jalur.sh hapus) =====
+distribusi dihapus
+===== log-hapus-2.txt (siapkan-gambar.sh hapus) =====
+Yang AKAN DIHAPUS (hanya yang dibuat skrip ini, ...):
+- distribusi CloudFront E1AAC4RBJKCR0D
+- kebijakan cache puisi-CacheWithQueryString
+- fungsi Lambda puisi-gambar
+- bucket S3 puisi-gambar-861817-13125 BESERTA SELURUH ISINYA (tidak bisa dipulihkan)
+==== CloudFront: nonaktifkan lalu hapus E1AAC4RBJKCR0D (5 sampai 15 menit) ====
+...
+[OK] fungsi Lambda dihapus
+[OK] bucket dihapus
+Selesai. Catatan ... dihapus.
+===== log-hapus-3.txt (1server.sh hapus) =====
+server i-0abff0c088a031042 dihentikan, menunggu terminated...
+...
+Security Group dihapus
+bucket puisi1-kode-149143868 dihapus
+===== log-sisa.txt (pemeriksaan baca-saja sesudah hapus) =====
+instance puisi-single (bukan terminated): 0
+SG puisi-1server-sg: 0
+bucket puisi*: 0
+Lambda: 0
+CloudFront: 0
+instance lain yang menyala: 0
+
+################ B. Deploy dari nol lewat GitHub (panduan langkah 1 sampai 11) ################
+===== log2-clone.txt (langkah 1) =====
+Cloning into '/home/cloudshell-user/puisi1/kode'...
+21054f6 feat(deploy): versi Single 1 server di AWS dengan Compose, Lambda, dan CloudFront
+
+===== log2-luncurkan.txt (langkah 2) =====
+==== 1. Jaringan, Security Group, AMI ====
+Security Group puisi-1server-sg dibuat (belum ada port masuk yang dibuka; server dikendalikan lewat SSM)
+AMI Amazon Linux 2023: ami-000d209a4fc9822c4 tipe: t3.small
+==== 2. Meluncurkan 1 server ====
+puisi-single dibuat di zona us-east-1a (i-087ffe437d766fb6f)
+
+===== log2-gambar.txt (langkah 3, TANPA_CLOUDFRONT=1) =====
+==== 1/5 Bucket S3 ====
+bucket puisi-gambar-864525-4129 dibuat
+[OK] akses publik, bucket policy baca-publik, dan static website hosting terpasang
+==== 2/5 Fungsi Lambda (puisi-gambar) ====
+=== membuat fungsi puisi-gambar (nodejs24.x, role arn:aws:iam::<akun>:role/LabRole) ===
+Function URL : https://hw6xffx44u6s2icrsrpx4hl2yq0yraik.lambda-url.us-east-1.on.aws/
+==== 3/5 Berkas latar di S3 ====
+[OK] diunggah: latar1.jpeg
+[OK] diunggah: latar2.jpeg
+[OK] diunggah: latar3.jpeg
+[OK] diunggah: latar5.jpeg
+==== 4/5 Uji fungsi Lambda langsung ====
+...
+==== 5/5 CloudFront ====
+kebijakan cache puisi-CacheWithQueryString dibuat
+TANPA_CLOUDFRONT=1: distribusi CloudFront gambar TIDAK dibuat (dibuat sekali saja oleh cloudfront-dua-jalur.sh).
+================ RINGKASAN ================
+bucket : puisi-gambar-864525-4129
+fungsi : puisi-gambar
+kebijakan cache /fungsi: 200de489-20c9-4853-b625-3b4a8e1f9750
+uji Lambda langsung: lulus (langkah 4/5)
+
+===== log2-tunggu.txt (langkah 4) =====
+SSM: Online
+Docker version 25.0.14, build 0bab007
+Docker Compose version v2.29.7
+github.com/docker/buildx v0.17.1 257815a6fbaee88976808020bf04274388275ae8
+git version 2.50.1
+RAM total 1909 MB
+swap 4095 MB
+262144
+
+===== log2-kode.txt (langkah 5: server git clone dari GitHub) =====
+cabang: ridlo/single-1server commit di CloudShell: 21054f6 feat(deploy): versi Single 1 server di AWS dengan Compose, Lambda, dan CloudFront
+commit di server: 21054f6 feat(deploy): versi Single 1 server di AWS dengan Compose, Lambda, dan CloudFront
+dibuat: secrets/jwt_secret.txt
+created: secrets/auth_db_password.txt
+created: secrets/auth_db_root_password.txt
+TTS local secrets are ready under secrets/. Credential values were not displayed.
+compose.yaml
+rabbitmq.conf
+
+===== log2-status.txt (langkah 6) =====
+Sat Nov 28 11:17:53 UTC 2026
+/opt/puisi/deploy/swarm/gateway/01-cloudfront.conf: 217 IPv4 + 35 IPv6
+KELUAR=0 (0 berarti semua image berhasil)
+Sat Nov 28 11:21:14 UTC 2026
+SELESAI
+puisi-pencarian:single 565MB
+puisi-poem:single 565MB
+puisi-auth:single 507MB
+puisi-tts:single 883MB
+puisi-auto-tagging:single 122MB
+puisi-analisis-emosi:single 122MB
+puisi-klasifikasi-genre:single 121MB
+puisi-gateway:single 69.2MB
+
+===== log2-naik.txt (langkah 7: SEKALI jalan, tanpa diulang; SeaweedFS langsung sehat) =====
+...
+Container puisi-single-search-consumer-1 Started
+SERVICE STATUS
+analisis-emosi Up 37 seconds (healthy)
+auth-db Up About a minute (healthy)
+auth-service Up 37 seconds (healthy)
+auto-tagging Up 37 seconds (healthy)
+gateway Up About a minute
+klasifikasi-genre Up 37 seconds (healthy)
+opensearch Up About a minute (healthy)
+poem-consumer Up 34 seconds (healthy)
+poem-db-1 Up About a minute (healthy)
+poem-relay Up 34 seconds (healthy)
+poem-service Up 37 seconds (healthy)
+rabbitmq-1 Up About a minute (healthy)
+redis-1 Up About a minute (healthy)
+search-consumer Up 1 second
+search-service Up 2 seconds (health: starting)
+seaweedfs Up About a minute (healthy)
+text-to-speech Up 32 seconds (healthy)
+tts-db Up About a minute (healthy)
+
+===== log2-verifikasi.txt (langkah 8) =====
+...
+tts-audio-init Exited (0) 2 minutes ago
+==== gateway dan layanan ====
+healthz=200
+{"status":"sukses","pesan":"Layanan puisi sehat."}
+galeri=200
+==== memori ====
+RAM: terpakai 1326, tersedia 314 dari 1909 MB
+swap: terpakai 1613 dari 4095 MB
+beban: 2.50, 4.11, 2.27
+vmstat si=12 so=6156 (KB/s masuk/keluar swap)
+vmstat si=300 so=11480 (KB/s masuk/keluar swap)
+puisi-single-opensearch-1 818.4MiB / 1.865GiB CPU 0.73%
+puisi-single-poem-db-1-1 37.98MiB / 1.865GiB CPU 1.47%
+puisi-single-auth-db-1 25.68MiB / 1.865GiB CPU 4.67%
+puisi-single-rabbitmq-1-1 41.3MiB / 1.865GiB CPU 0.63%
+puisi-single-text-to-speech-1 87.02MiB / 1.865GiB CPU 0.12%
+puisi-single-tts-db-1 57.42MiB / 1.865GiB CPU 0.62%
+...
+==== uji_e2e.py dari dalam server (target 10 dari 10) ====
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/1 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, "emosi_dominan_per_bait": ["perc
+audio LULUS GET /audio/puisi_1.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 1 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+
+===== log2-buka.txt dan log2-cloudfront.txt (langkah 9 dan 10) =====
+port 80 diizinkan hanya dari CloudFront (pl-3b927c52)
+asal /api dan /audio untuk CloudFront: ec2-34-234-97-205.compute-1.amazonaws.com
+asal S3 website : puisi-gambar-864525-4129.s3-website-us-east-1.amazonaws.com
+asal ALB : ec2-34-234-97-205.compute-1.amazonaws.com      (di versi Single: alamat server tunggal)
+asal Lambda URL : hw6xffx44u6s2icrsrpx4hl2yq0yraik.lambda-url.us-east-1.on.aws
+distribusi E30OTTBPLNCDPE dibuat (d1wkw4tk9hk1ny.cloudfront.net)
+[OK] web/ diunggah ke s3://puisi-gambar-864525-4129/ (alamat di api.js: https://d1wkw4tk9hk1ny.cloudfront.net)
+==== Uji lewat HTTPS ====
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/js/api.js
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/style.css
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/latar1.jpeg
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/fungsi?action=preview&template=latar1.jpeg&judul=Uji&penulis=Skrip&kutipan=halo
+[OK] 200 <- https://d1wkw4tk9hk1ny.cloudfront.net/api/puisi/sehat
+[OK] 401 <- https://d1wkw4tk9hk1ny.cloudfront.net/api/auth/login
+[OK] 301 <- http://d1wkw4tk9hk1ny.cloudfront.net/
+uji lulus: 8 dari 8
+ALAMAT APLIKASI (HTTPS): https://d1wkw4tk9hk1ny.cloudfront.net/
+
+===== log2-e2e-https.txt (langkah 11) =====
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/2 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, "emosi_dominan_per_bait": ["perc
+audio LULUS GET /audio/puisi_2.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 2 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+
+===== log2-jumlah.txt (jumlah resource sesudah deploy) =====
+server menyala: 1
+bucket puisi*: 1
+Lambda: 1
+CloudFront: 1

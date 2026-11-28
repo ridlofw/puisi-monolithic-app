@@ -130,7 +130,7 @@ API, dan gambar memakai satu alamat yang sama.
 
 **Tentang observability (Grafana dan kawan-kawan):** tidak dipasang di Single, sama seperti di versi 9 server. AWS sudah mencatat metrik dasar setiap
 instance EC2 di **CloudWatch** tanpa memasang apa pun: CPU, jaringan, dan baca-tulis disk, setiap 5 menit (Console: EC2 -> pilih instance -> tab
-Monitoring). Memori dan metrik per container **tidak** termasuk; untuk itu dipakai `bash ~/1server.sh memori`. Memasang Prometheus, Grafana, dan Loki
+Monitoring; langkah lengkap dan cara membacanya: [`PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md`](PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md)). Memori dan metrik per container **tidak** termasuk; untuk itu dipakai `bash ~/1server.sh memori`. Memasang Prometheus, Grafana, dan Loki
 di server 2 GiB yang sudah memakai swap akan memperlambat aplikasi yang sedang diukur.
 
 ---
@@ -175,21 +175,31 @@ cd ~ && YA=1 bash ~/1server.sh hapus                                            
 
 ## 10. Status bukti
 
-| Langkah | Status |
-|---|---|
-| Cek tipe instance (`--dry-run`) | **Dijalankan 28 Nov** |
-| Compose Single di laptop (build, up, `uji_e2e.py`) | **Dijalankan 28 Nov: 10 dari 10**, 18 container sekitar 3161 MiB |
-| 1 Cara B (kemas kode) | Dijalankan dengan perintah setara: `git archive` commit `5e7a453` ditambah berkas Single yang belum di-commit (isinya sama, tanpa `secrets/`). Perintah `tar czf` yang tertulis belum dijalankan apa adanya |
-| 2 luncurkan, 3 siapkan-gambar, 4 tunggu, 5 kode, 6 bangun | **Dijalankan 28 Nov** persis seperti tertulis |
-| 7 naik | Dijalankan; butuh perbaikan izin rahasia (sekarang di skrip) dan `naik` ulang (bagian 8). **Versi skrip dengan `chmod` belum dijalankan dari nol** |
-| 8 verifikasi | **Dijalankan: `uji_e2e.py` 10 dari 10** dari dalam server |
-| 9 buka | **Dijalankan**: port 80 hanya dari prefix list CloudFront |
-| 10 cloudfront | **Dijalankan: uji 8 dari 8** (halaman S3, `api.js` berisi alamat distribusi, CSS, latar, Lambda, `/api/puisi/sehat` 200, login salah 401, HTTP dialihkan 301) |
-| 11 uji HTTPS | **Dijalankan: `uji_e2e.py` lewat `https://...cloudfront.net` 10 dari 10** |
-| Halaman aplikasi di browser | Halaman Login dan Register tampil lewat HTTPS CloudFront ([tangkapan](bukti-1server/aplikasi-lewat-https-cloudfront.jpg)). Alur register, login, kirim puisi dibuktikan oleh `uji_e2e.py`, bukan diklik manual |
-| CloudWatch (metrik EC2 bawaan) | **Dibaca**: CPU, jaringan, disk, kredit CPU tersedia; memori tidak |
-| Cara A (`git clone`) | **Belum** (berkas belum di GitHub saat uji) |
-| Bagian 7 (membersihkan) | (diisi sesudah dihapus) |
+Dijalankan dua putaran pada 28 Nov 2026. **Putaran 2 adalah dokumen ini apa adanya**: semua resource putaran 1 dihapus (bagian 7), lalu
+langkah 1 sampai 11 dijalankan dari nol dengan kode dari GitHub (cabang `ridlo/single-1server`, commit `21054f6`).
+
+| Langkah | Putaran 2: dari nol lewat GitHub (dokumen ini) | Putaran 1: kode dari laptop (versi lama skrip) |
+|---|---|---|
+| Cek tipe instance (`--dry-run`) | | **Dijalankan**: hanya `t3.small`, `t2.small` |
+| Compose Single di laptop | | **10 dari 10**, 18 container sekitar 3161 MiB |
+| 1 git clone di CloudShell | **Dijalankan** persis seperti tertulis | (arsip `.tgz` dari laptop) |
+| 2 luncurkan | **Dijalankan** | Dijalankan |
+| 3 siapkan-gambar `TANPA_CLOUDFRONT=1` | **Dijalankan**: bucket, Lambda (uji langsung lulus), tanpa distribusi gambar | (versi lama: membuat distribusi gambar juga, 2 dari 2) |
+| 4 tunggu | **Dijalankan** (termasuk `git version 2.50.1`) | Dijalankan |
+| 5 kode (server `git clone`) | **Dijalankan**: commit di server sama dengan di CloudShell (`21054f6`) | (arsip lewat bucket S3) |
+| 6 bangun | **Dijalankan**: 8 image, 3 menit 21 detik, `KELUAR=0` | 3 menit 3 detik |
+| 7 naik | **Dijalankan sekali, semua `Up`** (perbaikan izin rahasia terbukti) | butuh `chmod` manual dan dua kali `naik` ulang |
+| 8 verifikasi | **`uji_e2e.py` 10 dari 10** dari dalam server | 10 dari 10 |
+| 9 buka | **Dijalankan** | Dijalankan |
+| 10 cloudfront | **Uji 8 dari 8**, satu-satunya distribusi | 8 dari 8 |
+| 11 uji HTTPS | **`uji_e2e.py` 10 dari 10** lewat `https://d1wkw4tk9hk1ny.cloudfront.net` | 10 dari 10 |
+| Jumlah resource sesudah deploy | **1 server, 1 bucket, 1 Lambda, 1 CloudFront** | 1 server, 2 bucket, 1 Lambda, 2 CloudFront |
+| Bagian 7 (membersihkan) | belum (resource putaran 2 masih menyala saat dokumen ini ditulis) | **Dijalankan** (tiga perintah apa adanya); pemeriksaan sesudahnya: 0 server, 0 Security Group, 0 bucket, 0 Lambda, 0 CloudFront |
+| Halaman aplikasi di browser | | Halaman Login dan Register tampil lewat HTTPS ([tangkapan](bukti-1server/aplikasi-lewat-https-cloudfront.jpg)) |
+| CloudWatch (metrik EC2 bawaan) | | **Dibaca**: CPU, jaringan, disk, kredit CPU; memori tidak. Cara membaca: [`PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md`](PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md) |
+
+Catatan kecil: kebijakan cache CloudFront buatan `cloudfront-dua-jalur.sh` (`puisi-StatisPendek`) tidak ikut dihapus oleh bagian 7. Kebijakan
+cache tidak berbiaya dan dipakai ulang pada deploy berikutnya.
 
 Bukti (log tanpa nomor akun dan email): [`docs/bukti-1server/`](bukti-1server/).
 
@@ -204,4 +214,5 @@ Bukti (log tanpa nomor akun dan email): [`docs/bukti-1server/`](bukti-1server/).
 | [`deploy/aws/1server/rabbitmq.conf`](../deploy/aws/1server/rabbitmq.conf) | RabbitMQ satu node (tanpa daftar node klaster) |
 | [`deploy/aws/cloudfront-dua-jalur.sh`](../deploy/aws/cloudfront-dua-jalur.sh) | CloudFront dua jalur, dipakai bersama versi 9 server (`W_DIR` memilih folder catatan) |
 | [`deploy/lambda/siapkan-gambar.sh`](../deploy/lambda/siapkan-gambar.sh) | Lambda, S3, dan CloudFront gambar kutipan |
+| [`PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md`](PANDUAN-CLOUDWATCH-DAN-STRESS-TEST.md) | Cara membuka dan membaca CloudWatch, cara menentukan titik jenuh dan titik hancur stress test |
 | [`PANDUAN-DEPLOY-AWS.md`](PANDUAN-DEPLOY-AWS.md) | Versi Scalable 9 server |
