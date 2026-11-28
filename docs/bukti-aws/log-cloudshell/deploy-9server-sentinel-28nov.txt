@@ -215,6 +215,14 @@ puisi_redis-sentinel-3.1 ip-172-31-3-180.ec2.internal Running Running 11 minutes
 2026-11-28T13:04:00Z ... # Sentinel is now ready to exit, bye bye...
 2026-11-28T13:04:12Z ... * Sentinel new configuration saved on disk           (task baru)
 exit=0 oom=false fin=2026-11-28T13:04:00.185106191Z
+docker inspect 78d8d8d307a7 (container Sentinel lama di server 1), .State.Health:
+{"Status":"unhealthy","FailingStreak":3,"Log":[
+ {"Start":"2026-11-28T13:03:05.587Z","ExitCode":0,"Output":"PONG\n"},
+ {"Start":"2026-11-28T13:03:15.676Z","ExitCode":0,"Output":"PONG\n"},
+ {"Start":"2026-11-28T13:03:25.765Z","End":"2026-11-28T13:03:30.897Z","ExitCode":-1,"Output":"Health check exceeded timeout (3s)"},
+ {"Start":"2026-11-28T13:03:40.900Z","End":"2026-11-28T13:03:44.233Z","ExitCode":-1,"Output":"Health check exceeded timeout (3s)"},
+ {"Start":"2026-11-28T13:03:54.234Z","End":"2026-11-28T13:03:57.989Z","ExitCode":-1,"Output":"Health check exceeded timeout (3s)"}]}
+exited exit=0 fin=2026-11-28T13:04:00.185106191Z
 
 ##### Langkah 10, 12, 13, 14, 15: gateway, stack2, pasang, hitung (log-e)
 /opt/puisi/deploy/swarm/gateway/01-cloudfront.conf: 217 IPv4 + 35 IPv6

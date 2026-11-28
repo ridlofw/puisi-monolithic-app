@@ -66,7 +66,7 @@ Ingin memeriksa sandbox Anda sendiri sebelum mulai (hanya membaca, tidak membuat
   Server membaca berkas di Linux, jadi akhir barisnya LF dengan sendirinya (`git clone` di Linux; `.gitattributes` menjaga `*.sh`, `*.yaml`, `*.conf`).
 - Gambar latar dari dosen (`latar1.jpeg`, `latar2.jpeg`, `latar3.jpeg`, `latar5.jpeg`) di folder `~/latar` CloudShell (unggah sekali lewat menu Tindakan; folder ini tetap ada antar-sesi).
   Tanpa itu skrip membuat latar pengganti polos.
-- Waktu: sekitar **1 jam** dari nol sampai HTTPS (kebanyakan menunggu).
+- Waktu: **30 menit** dari `luncurkan` (12:47 UTC) sampai e2e lewat HTTPS lulus (13:17 UTC) pada 28 Nov, kebanyakan menunggu; ditambah sekitar 7 menit untuk uji Redis dan `ujibaru`.
 - **Privasi:** semua skrip menyaring keluarannya (nomor akun 12 digit, email, nama sesi, ID kunci). Tetap **jangan menempel nomor akun, email, atau kunci akses**
   ke chat, GitHub, atau tangkapan layar. Header console AWS memuat nomor akun: potong sebelum membagikan gambar.
 
@@ -113,8 +113,10 @@ Rahasia (sandi database, kunci JWT) **tidak ada di GitHub**: dibuat baru di serv
 (`servers.tsv`, `sg`, `bucket`, `alb-dns`, `cf-dua-id`) dan `~/.puisi-gambar.state` akan menunjuk ke sumber daya yang tidak ada. Pindahkan dulu sebelum langkah 1:
 
 ```bash
-mkdir -p ~/lama-$(date +%d%b) && mv ~/puisi9 ~/.puisi-gambar.state ~/deploy ~/*.sh ~/lama-$(date +%d%b)/ 2>/dev/null; ls ~
+mkdir -p ~/lama && for f in ~/puisi9 ~/.puisi-gambar.state ~/deploy ~/*.sh ~/*.tgz ~/*.log; do [ -e "$f" ] && mv "$f" ~/lama/; done; ls ~
 ```
+
+(28 Nov dijalankan dengan folder `~/lama-28nov`; folder `~/latar` dan `~/puisi1` milik versi Single sengaja tidak dipindah.)
 
 ### Cara lama: unggah `kode.tgz` dari laptop (dipakai 23 Nov; tidak perlu lagi)
 
@@ -160,10 +162,10 @@ pada 28 Nov 2026 (jam UTC di log). Perintah yang lama berjalan sebaiknya dijalan
 | 2 | `bash ~/9server.sh swarm` | Menunggu 9 server terdaftar di SSM (maks 10 menit) dan Docker siap; `swarm init` di s1; **s2 dan s3 manager**, s4 sampai s9 worker; memasang label | **3,5 menit** | tiap server mencetak versi Docker dan git; `docker node ls`: 9 `Ready`, 1 `Leader`, 2 `Reachable` |
 | 3 | `bash ~/9server.sh kode` | Server 1 **mengambil kode langsung dari GitHub** (`git clone --depth 1`, cabang yang sama dengan `~/puisi9/kode`) ke `/opt/puisi`. Tanpa bucket S3. Bila `/opt/puisi` sudah berisi repositori, langkah ini tidak mengubah apa pun (lihat bagian 9, `only updates to Labels`) | **7 detik** | `commit di CloudShell` dan `commit di server 1` sama |
 | 4 | `bash ~/9server.sh image` | Registry sendiri di Swarm (port 5000), lalu **6 image** dibangun di s1 di latar belakang: gateway, poem, auth, auto-tagging, klasifikasi-genre, analisis-emosi. **Jangan memakai `\| tail`** (menahan keluaran) | registry siap dalam detik; build **2 m 44 d** | `bash ~/9server.sh status` menampilkan `SELESAI` dan 6 baris `OK` |
-| 5 | `bash ~/9server.sh deploy` | Membuat rahasia (`scripts/siapkan_rahasia*.py`), `docker stack deploy`, lalu **membuang 15 layanan** pencarian dan TTS (dipasang di tahap 2) | perintah < 1 menit; layanan naik dalam ± 3,5 menit | `bash ~/9server.sh hitung`: **`29 layanan penuh, 0 belum; total 29`** (28 + registry) |
+| 5 | `bash ~/9server.sh deploy` | Membuat rahasia (`scripts/siapkan_rahasia*.py`), `docker stack deploy`, lalu **membuang 15 layanan** pencarian dan TTS (dipasang di tahap 2) | perintah < 1 menit; 28 Nov dicek 3,5 menit sesudahnya dan sudah penuh (lebih cepat dari itu tidak diukur) | `bash ~/9server.sh hitung`: **`29 layanan penuh, 0 belum; total 29`** (28 + registry) |
 | 6 | `bash ~/9server.sh rabbit` | **Wajib.** RabbitMQ tidak otomatis berklaster di Swarm: node 2 dan 3 di-`join_cluster` ke node 1, antrean quorum ditambah replika, lalu **setiap antrean quorum yang anggotanya kurang dari 3 dilengkapi** (`add_member`; temuan `q.tap` 24 Nov). Aman diulang | ± 1 menit | tiga baris `rabbit@rabbitmq-1`, `-2`, `-3` dan **`13 dari 13 antrean quorum beranggota 3 node`** |
 | 7 | `bash ~/9server.sh verifikasi` | poem-db dan auth-db (masing-masing 3 ONLINE), RabbitMQ 3 node dan anggota antrean quorum, **Redis Sentinel**, gateway, `uji_e2e.py` | ± 3 menit | **`REDIS OK: 1 master (redis-1), 2 replika tersambung, 3 Sentinel sepakat, tilt 0`** dan **8 dari 10** tahap e2e lulus (`audio` dan `pencarian` belum ada) |
-| 8 | `bash ~/alb.sh buat` | Security Group ALB, target group `puisi-tg` (health check `/healthz`), **ALB** internet-facing, listener 80, mendaftarkan s1 sampai s3 | dibuat dalam 15 detik; `healthy` dalam ± 3 menit | `bash ~/alb.sh status`: 3 target `healthy`; alamatnya di `~/puisi9/alb-dns` |
+| 8 | `bash ~/alb.sh buat` | Security Group ALB, target group `puisi-tg` (health check `/healthz`), **ALB** internet-facing, listener 80, mendaftarkan s1 sampai s3 | dibuat dalam 15 detik; 28 Nov dicek 3,5 menit sesudahnya: sudah `healthy` | `bash ~/alb.sh status`: 3 target `healthy`; alamatnya di `~/puisi9/alb-dns` |
 
 ### Gambar kutipan: Lambda dan S3 (tanpa CloudFront sendiri)
 
@@ -189,7 +191,7 @@ Langkah 9 boleh dijalankan kapan saja sebelum langkah 17 (28 Nov: langsung sesud
 | 12 | `bash ~/9server.sh stack2` | `docker stack deploy -c stack.yaml -c override-9server.yaml`. Layanan baru berstatus `0/1` (menunggu label, belum memakai memori) | < 1 menit | baris pertama menampilkan `puisi-gateway:v4-gw`; bagian "task layanan lama yang baru dimulai" hanya berisi task `gateway` dari langkah 10 (wajar). 28 Nov juga muncul `redis-sentinel-1`: itu bukan karena `stack2`, lihat bagian 9 (TILT saat build) |
 | 13 | `bash ~/9server.sh pasang pencarian` | `vm.max_map_count=262144` di s1 sampai s3 (wajib bagi OpenSearch; bawaan 65530) dan label `puisi.pool.pencarian` | < 1 menit; klaster hijau ± 2 menit | `bash ~/9server.sh jalankan 1 'docker exec $(docker ps -qf name=puisi_opensearch-1) curl -s -m 8 localhost:9200/_cluster/health'`: `"status":"green"`, 3 node; `search-service` 2/2 |
 | 14 | `bash ~/9server.sh pasang tts` | Label `puisi.pool.tts` di s7 sampai s9 dan `puisi.audio` di s7 (server lain: `AUDIO_DI=8 bash ~/9server.sh pasang tts`) | < 1 menit; layanan naik ± 3 menit | klaster tts-db 3 ONLINE; `seaweedfs` dan `text-to-speech` 1/1 |
-| 15 | `bash ~/9server.sh hitung` | Menghitung layanan yang belum penuh dan keadaan node | beberapa detik | **`44 layanan penuh, 0 belum; total 44`** dan 9 node (1 Leader, 2 Reachable, 6 Ready). 28 Nov: tercapai 3 menit sesudah langkah 14, tanpa dorongan manual |
+| 15 | `bash ~/9server.sh hitung` | Menghitung layanan yang belum penuh dan keadaan node | beberapa detik | **`44 layanan penuh, 0 belum; total 44`** dan 9 node (1 Leader, 2 Reachable, 6 Ready). 28 Nov: dicek 3 menit sesudah langkah 14 dan sudah penuh, tanpa dorongan manual |
 | 15b | `bash ~/9server.sh rabbit` | Ulangi sekali: antrean yang dideklarasikan sesudah langkah 6 ikut diperiksa anggotanya | ± 30 detik | `13 dari 13 antrean quorum beranggota 3 node` |
 
 **Bila langkah 14 atau 15 menunjukkan layanan TTS yang tetap `0/1` (Pending):** penjadwal tidak selalu mencoba ulang setelah label dipasang. Dorong:
@@ -305,7 +307,11 @@ Pemeriksaan sesudahnya (semua harus 0):
 for r in us-east-1 us-west-2; do aws ec2 describe-instances --region $r --filters Name=instance-state-name,Values=pending,running,stopping,stopped --query 'length(Reservations[].Instances[])'; done
 aws cloudfront list-distributions --query 'length(DistributionList.Items || `[]`)'; aws lambda list-functions --query 'length(Functions)'
 aws s3api list-buckets --query 'length(Buckets[?starts_with(Name,`puisi`)])'; aws elbv2 describe-load-balancers --query 'length(LoadBalancers)'
+aws elbv2 describe-target-groups --query 'length(TargetGroups)'; aws ec2 describe-security-groups --filters 'Name=group-name,Values=puisi*' --query 'length(SecurityGroups)'
 ```
+
+Bila Security Group masih tersisa (`DependencyViolation`: grup ALB dirujuk aturan masuk `puisi-swarm-sg`, atau antarmuka jaringan ALB belum dilepas), tunggu satu menit lalu ulangi
+`YA=1 bash ~/alb.sh hapus` dan `YA=1 bash ~/9server.sh hapus`.
 
 Kebijakan cache `puisi-StatisPendek` boleh dibiarkan (tidak berbiaya, dipakai ulang). Biaya 9 `t3.small` sekitar $0,19 per jam menurut tarif standar (**tidak diverifikasi**);
 sesi 23 Nov memakai sekitar $2,5 menurut penghitung lab (angkanya tertinggal 8 sampai 12 jam). Status perintah hapus: bagian 11.
@@ -377,7 +383,7 @@ Yang berubah: **semua 8 image harus dibangun ulang** dan beberapa perilaku baru 
 | Retry dengan jitter di semua consumer dan worker; metrik durasi per request di Redis | Ikut otomatis; satu operasi Redis tambahan per request API | Tidak ada |
 | **Tidak dibawa ke AWS:** gateway ganda VRRP/keepalived (`gateway-2`, `gateway/Dockerfile`), edit `compose/*.yaml`, Prometheus `dns_sd`, alert P99, dashboard Grafana | Swarm memakai `deploy/swarm/Dockerfile.gateway` (nginx polos) dan 3 gateway di belakang ALB; VPC AWS tidak meneruskan IP mengambang; stack ini tidak punya Prometheus atau Grafana | Jangan mengalihkan build Swarm ke `gateway/Dockerfile` |
 
-**Men-deploy dari nol.** Langkah 1 sampai 18 sama seperti di atas; `TAG` bawaan `v4`, gateway final `v4-gw`. Setelah langkah 16 dan 18 jalankan `bash ~/9server.sh ujibaru`.
+**Men-deploy dari nol.** Langkah 1 sampai 21 seperti di atas (`ujibaru` adalah langkah 21); `TAG` bawaan `v4`, gateway final `v4-gw`.
 
 **Memperbarui sistem yang sedang berjalan** (tanpa mulai dari nol; **dijalankan di AWS 23 Nov 2026**, hasilnya di bagian 11). Image kode lama (`v1`, gateway `v3`) tetap ada di registry, jadi pembaruan ini bisa dibatalkan:
 `TAG=v1 GATEWAY_TAG=v3 bash ~/9server.sh stack2` mengembalikan semua layanan aplikasi ke kode sebelum perubahan Pison (tabel `idempotensi` yang sudah terbentuk tidak mengganggu kode lama).
@@ -447,14 +453,15 @@ halaman aplikasi lewat HTTPS: [`bukti-aws/28-aplikasi-9server-sentinel-lewat-htt
 | 17 cloudfront | **Dijalankan** | 3 m 14 d; **uji 8 dari 8**; satu-satunya distribusi |
 | 18a e2e lewat ALB | **Dijalankan** dari CloudShell | **10 dari 10** |
 | 18b e2e lewat HTTPS | **Dijalankan** dari CloudShell | **10 dari 10** |
-| 19 ujiredis | **Dijalankan** | master awal `redis-1` (s1); 13:19:16 `scale puisi_redis-1=0`; `+sdown` 13:19:23, `+odown #quorum 2/2` 13:19:23, **`+switch-master ... redis-3` 13:19:25 (9 detik sesudah perintah)**; ketiga Sentinel menyebut `redis-3`, `sentinel_tilt:0`; `redis-1` dinyalakan lagi 13:19:30 dan **13 detik kemudian menjadi replika** (`mulai.sh: redis-1 menjadi replika dari redis-3`), `connected_slaves:2`. **118 probe `GET /api/puisi`, 0 gagal** |
+| 19 ujiredis | **Dijalankan** | master awal `redis-1` (s1); 13:19:16 `scale puisi_redis-1=0`; `+sdown` 13:19:23, `+odown #quorum 2/2` 13:19:23, **`+switch-master ... redis-3` 13:19:25 (9 detik sesudah perintah)**; ketiga Sentinel menyebut `redis-3`, `sentinel_tilt:0`; `redis-1` dinyalakan lagi 13:19:30 dan **13 detik kemudian menjadi replika** (`mulai.sh: redis-1 menjadi replika dari redis-3`), `connected_slaves:2`. 118 probe `GET /api/puisi`, 0 gagal (catatan: gateway menyimpan `GET /api/puisi` di cache-nya sendiri, jadi angka ini **bukan** bukti ketersediaan Redis; buktinya ada di baris berikut, jalur tulis) |
 | 20 verifikasi + redis sesudah failover | **Dijalankan** | e2e **10 dari 10**; `puisi:galeri:versi` di master baru `redis-3` naik dari 23 ke 28 (aplikasi menulis ke master baru); REDIS OK |
 | 21 ujibaru | **Dijalankan** | **9 dari 9 pemeriksaan lulus** (kunci sama: id sama dan `Idempotent-Replay: true`; isi beda 409; kunci pendek 400; 120 GET tanpa 429; 300 POST cepat: 29 diteruskan, 271 `429` JSON). Catatan: baris "tabel idempotensi" mencetak `0` di ketiga node, padahal pemeriksaan langsung sesudahnya menemukan tabel itu di poem-db-1, -2, -3 dan baris perintah yang sama dijalankan ulang mencetak `1`. Penyebab angka 0 itu **belum dipastikan** |
 | Jumlah resource | **Diperiksa** | 9 server, 2 Security Group, 1 ALB, **1 bucket, 1 Lambda, 1 CloudFront** |
 | Bagian 8b (hapus) | **Belum** (resource dibiarkan menyala sampai Ridlo mengizinkan penghapusan) | |
 
 **Temuan 28 Nov: Sentinel masuk TILT saat server 1 membangun image.** Pada 13:03:29 sampai 13:03:53 UTC, ketika `image2` membangun `puisi-tts` di server 1,
-`redis-sentinel-1` (di server 1) tiga kali mencatat `+tilt #tilt mode entered`. Healthcheck-nya gagal dan Swarm menyalakannya ulang pada 13:04:00 (keluar 0, bukan OOM).
+`redis-sentinel-1` (di server 1) tiga kali mencatat `+tilt #tilt mode entered`. Healthcheck-nya (`redis-cli -p 26379 ping`, batas 3 detik) tiga kali berturut-turut
+`Health check exceeded timeout (3s)` (13:03:25, 13:03:40, 13:03:54; `docker inspect` container lama: `unhealthy`, `FailingStreak 3`), lalu Swarm menyalakannya ulang pada 13:04:00 (keluar 0, bukan OOM).
 `redis-1` (master, juga di server 1) tidak mati dan master tidak berpindah; dua Sentinel lain normal. Artinya beban build di server 1 cukup berat sampai proses tersendat
 lebih dari sekitar 2 detik. Untuk demo failover, jangan membangun image pada saat yang sama (bagian 9).
 
