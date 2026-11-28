@@ -1,0 +1,9 @@
+# python services/puisi/uji/uji_anti_spof.py
+# 2026-11-28 sekitar 16.35 WIB, commit 1f4a2e4 (skenario 4 mematikan ketiga node Redis)
+[LULUS] Skenario 1: 1 replika poem-service mati -- POST=202, GET=200, id=173
+[LULUS] Skenario 2: poem-db-router-1 mati (failover ke router-2) -- POST=202, GET=200, id=174
+[LULUS] Skenario 3: Primary poem-db-1 mati -> failover ke poem-db-3 -- POST=202, GET=200, primary_baru=poem-db-3, id=175
+[LULUS] Skenario 4: Redis mati -> degradasi aman ke DB -- GET=200, X-Cache-Layer=db
+[LULUS] Skenario 5: 1 node RabbitMQ (rabbitmq-2) mati -- POST=202, outbox_terkirim=True, id=176
+[LULUS] Skenario 6: Seluruh RabbitMQ mati -> Outbox -> Pulih & terkirim -- POST=202, outbox_terkirim_setelah_pulih=True, id=177
+Ringkasan Uji Anti-SPOF: 6/6 skenario LULUS.

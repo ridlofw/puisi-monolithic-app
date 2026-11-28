@@ -21,7 +21,7 @@
 #
 #   kunci pool      pemilik  isi                                                  server minimal
 #   --------------  -------  ---------------------------------------------------  --------------
-#   infra           Pison    gateway, RabbitMQ (3 node), Redis                    3
+#   infra           Pison    gateway, RabbitMQ (3 node), Redis Sentinel (3+3)     3
 #   auto-tagging    Pison    auto-tagging                                         2
 #   puisi           Ridlo    poem-service, relay, consumer, poem-db (3) + router  3
 #   genre           Ridlo    klasifikasi-genre                                    2
@@ -63,8 +63,6 @@
 #   seaweedfs   -> fitur audio. Data di disk SATU server (puisi.audio). Bila server itu mati,
 #                  audio berhenti sampai server hidup lagi. Mengurangi dampaknya:
 #                  stack.efs.yaml (data di Amazon EFS, Swarm menjalankannya di server lain).
-#   redis       -> hanya cache. Mati = lebih lambat, bukan henti layanan (satu salinan,
-#                  dijadwalkan ulang oleh Swarm).
 #   Router MySQL mem-bootstrap dari SATU node; lihat USULAN-PEMILIK.md (Ridlo).
 #   Dua server mati sekaligus di pool yang memegang klaster = kuorum klaster itu hilang (penulisan gagal).
 #
@@ -99,7 +97,8 @@ x-env-poem: &env-poem
   DB_PASS: poem
   DB_READ_HOSTS: "poem-db-router-1:6447,poem-db-router-2:6447,poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306"
   DB_WRITE_HOSTS: "poem-db-router-1:6446,poem-db-router-2:6446,poem-db-1:3306,poem-db-2:3306,poem-db-3:3306"
-  REDIS_HOSTS: "redis:6379"
+  REDIS_HOSTS: "redis-1:6379,redis-2:6379,redis-3:6379"
+  REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
   SUMBER_WAJIB: "auto-tagging,klasifikasi-genre"
 
 # Terus mencoba lagi tanpa batas. Inilah pengganti depends_on: layanan yang start
@@ -293,15 +292,22 @@ services:
       restart_policy: *ulang-terus
 
   # ===========================================================================
-  # REDIS  -  cache murni. SATU salinan di server pool infra mana pun: bila servernya mati
-  # Swarm menjalankannya lagi di server pool infra lain (cache kosong). Selama itu aplikasi
-  # turun ke database (diuji di satu server: 'Redis mati' LULUS). Ini bukan Redis HA.
-  # Jangan menambah redis kedua ke REDIS_HOSTS, lihat USULAN-PEMILIK.md (Pison).
+  # REDIS SENTINEL  -  cache murni, 1 master + 2 replika + 3 Sentinel, satu node dan satu Sentinel per server pool
+  # infra (slot 1, 2, 3). Bila server master mati, Sentinel (kuorum 2) mempromosikan replika dalam hitungan detik;
+  # aplikasi menemukan master lewat REDIS_SENTINELS lalu memeriksa ROLE (services/*/src/MasterRedis.php).
+  # Sengaja TANPA dnsrr: nama VIP tetap ter-resolve walau task-nya mati. Sentinel masuk mode TILT (tidak mau
+  # failover) bila nama node tidak bisa di-resolve. Diuji di Compose dengan IP tetap; di Swarm BELUM diuji.
   # ===========================================================================
 
-  redis:
+  redis-1: &redis
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["sh", "/mulai.sh", "node", "redis-1"]
+    environment: &redis-env
+      REDIS_NODE: "redis-1 redis-2 redis-3"
+      REDIS_SENTINEL: "redis-sentinel-1 redis-sentinel-2 redis-sentinel-3"
+    configs:
+      - source: redis_mulai
+        target: /mulai.sh
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -311,7 +317,62 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: ["node.labels.puisi.pool.infra == true"]
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  redis-2:
+    <<: *redis
+    command: ["sh", "/mulai.sh", "node", "redis-2"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  redis-3:
+    <<: *redis
+    command: ["sh", "/mulai.sh", "node", "redis-3"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 3"]
+      restart_policy: *ulang-terus
+
+  redis-sentinel-1: &sentinel
+    image: redis:7-alpine
+    command: ["sh", "/mulai.sh", "sentinel", "redis-sentinel-1"]
+    environment: *redis-env
+    configs:
+      - source: redis_mulai
+        target: /mulai.sh
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks: [puisi]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 1"]
+      restart_policy: *ulang-terus
+
+  redis-sentinel-2:
+    <<: *sentinel
+    command: ["sh", "/mulai.sh", "sentinel", "redis-sentinel-2"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 2"]
+      restart_policy: *ulang-terus
+
+  redis-sentinel-3:
+    <<: *sentinel
+    command: ["sh", "/mulai.sh", "sentinel", "redis-sentinel-3"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.puisi.pool.infra == true", "node.labels.puisi.slot == 3"]
       restart_policy: *ulang-terus
 
   # ===========================================================================
@@ -859,7 +920,8 @@ services:
     image: "${REGISTRY:-localhost:5000}/puisi-pencarian:${TAG:-v1}"
     environment:
       OPENSEARCH_URL: http://opensearch:9200
-      REDIS_HOSTS: "redis:6379"
+      REDIS_HOSTS: "redis-1:6379,redis-2:6379,redis-3:6379"
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
     networks: [puisi]
     deploy:
       mode: global
@@ -879,7 +941,8 @@ services:
     environment:
       AMQP_URLS: *amqp
       OPENSEARCH_URL: http://opensearch:9200
-      REDIS_HOSTS: "redis:6379"
+      REDIS_HOSTS: "redis-1:6379,redis-2:6379,redis-3:6379"
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
     healthcheck:
       disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
     networks: [puisi]
@@ -1138,3 +1201,5 @@ configs:
     file: ./skrip/init-innodb-cluster.sh
   opensearch_haproxy:
     file: ./opensearch/haproxy.cfg
+  redis_mulai:
+    file: ../../redis/mulai.sh

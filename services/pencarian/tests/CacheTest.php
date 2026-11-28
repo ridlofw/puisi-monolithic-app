@@ -69,7 +69,9 @@ final class CacheTest extends TestCase
     public function testTanpaRedisSemuaOperasiAmanDanKosong(): void
     {
         //alamat yang tidak mungkin terjangkau: pencarian harus jalan tanpa cache, bukan melempar
+        $sentinel = getenv('REDIS_SENTINELS');
         putenv('REDIS_HOSTS=127.0.0.1:1');
+        putenv('REDIS_SENTINELS=');
         try {
             self::assertNull(Cache::versi());
             self::assertNull(Cache::ambil('cari:v1:x'));
@@ -77,6 +79,7 @@ final class CacheTest extends TestCase
             self::assertFalse(Cache::naikkanVersi());
         } finally {
             putenv('REDIS_HOSTS');
+            putenv($sentinel === false ? 'REDIS_SENTINELS' : 'REDIS_SENTINELS=' . $sentinel);
         }
     }
 }

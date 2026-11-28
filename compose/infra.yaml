@@ -85,12 +85,80 @@ services:
     ports:
       - "15674:15672"
 
-  redis:
+  # Redis Sentinel: 1 master, 2 replika, 3 Sentinel. Bila master mati, Sentinel mempromosikan replika dalam
+  # hitungan detik. Masih cache murni tanpa persistensi; aplikasi tetap jalan walau semua node Redis mati.
+  # Semua memakai IP tetap di jaringan redis-ha, bukan nama host: Sentinel masuk mode TILT (tidak mau failover)
+  # bila nama node yang berhenti tidak bisa di-resolve, dan PHP menunggu sekitar 4 detik untuk nama yang hilang.
+  redis-1: &redis
     image: redis:7-alpine
-    # cache murni, tanpa persistensi. Setiap layanan wajib tetap jalan saat redis mati
-    command: ["redis-server", "--save", "", "--appendonly", "no",
-              "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["sh", "/mulai.sh", "node", "10.231.1.11"]
+    environment: &redis-env
+      REDIS_NODE: 10.231.1.11 10.231.1.12 10.231.1.13
+      REDIS_SENTINEL: 10.231.1.21 10.231.1.22 10.231.1.23
+    volumes:
+      - ./redis/mulai.sh:/mulai.sh:ro
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.11
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
+
+  redis-2:
+    <<: *redis
+    command: ["sh", "/mulai.sh", "node", "10.231.1.12"]
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.12
+
+  redis-3:
+    <<: *redis
+    command: ["sh", "/mulai.sh", "node", "10.231.1.13"]
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.13
+
+  redis-sentinel-1: &sentinel
+    image: redis:7-alpine
+    command: ["sh", "/mulai.sh", "sentinel", "10.231.1.21"]
+    environment: *redis-env
+    volumes:
+      - ./redis/mulai.sh:/mulai.sh:ro
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.21
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      redis-1:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis-sentinel-2:
+    <<: *sentinel
+    command: ["sh", "/mulai.sh", "sentinel", "10.231.1.22"]
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.22
+
+  redis-sentinel-3:
+    <<: *sentinel
+    command: ["sh", "/mulai.sh", "sentinel", "10.231.1.23"]
+    networks:
+      default: {}
+      redis-ha:
+        ipv4_address: 10.231.1.23
 
 secrets:
   jwt_secret:
@@ -107,3 +175,9 @@ networks:
     ipam:
       config:
         - subnet: 10.231.0.0/24
+  # IP tetap Redis .11-.23; IP otomatis untuk klien hanya dari .128 ke atas supaya tidak bertabrakan
+  redis-ha:
+    ipam:
+      config:
+        - subnet: 10.231.1.0/24
+          ip_range: 10.231.1.128/25

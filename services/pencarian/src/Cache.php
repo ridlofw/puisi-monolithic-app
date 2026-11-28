@@ -98,17 +98,39 @@ final class Cache
 
     private static function coba(callable $kerja, bool $paksa = false): mixed
     {
-        $r = self::klien($paksa);
-        if ($r === null) {
-            return null;
+        for ($ulang = 0; $ulang < 2; $ulang++) {
+            $r = self::klien($paksa);
+            if ($r === null) {
+                return null;
+            }
+            try {
+                return $kerja($r);
+            } catch (\Throwable $e) {
+                self::lepas();
+                // READONLY: node ini master lama yang sudah diturunkan Sentinel, cari master baru lalu ulangi sekali
+                if (!str_starts_with($e->getMessage(), 'READONLY')) {
+                    self::$gagalTerakhir = microtime(true);
+                    return null;
+                }
+            }
         }
-        try {
-            return $kerja($r);
-        } catch (\Throwable) {
-            self::$klien = null;
-            self::$gagalTerakhir = microtime(true);
-            return null;
-        }
+        return null;
+    }
+
+    private static function penemu(): MasterRedis
+    {
+        // env dibaca setiap kali seperti sebelumnya; ingatan master ada di berkas, bukan di objek ini
+        $hosts    = array_values(array_filter(array_map('trim', explode(',', Konfig::env('REDIS_HOSTS', 'redis:6379')))));
+        $sentinel = array_values(array_filter(array_map('trim', explode(',', Konfig::env('REDIS_SENTINELS', '')))));
+        // nama berkas mengikuti konfigurasi, supaya alamat tersimpan dari konfigurasi lain tidak terpakai
+        $berkas = sys_get_temp_dir() . '/pencarian-redis-' . substr(md5(json_encode([$hosts, $sentinel])), 0, 8) . '.json';
+        return new MasterRedis($hosts, $sentinel, Konfig::env('REDIS_MASTER_NAME', 'puisi'), $berkas);
+    }
+
+    private static function lepas(): void
+    {
+        self::$klien = null;
+        self::penemu()->lupakan();
     }
 
     private static function berkasPemutus(): string
@@ -144,18 +166,12 @@ final class Cache
         if (!$paksa && self::sedangMati()) {
             return null;
         }
-        foreach (array_filter(array_map('trim', explode(',', Konfig::env('REDIS_HOSTS', 'redis:6379')))) as $butir) {
-            [$host, $port] = array_pad(explode(':', $butir, 2), 2, '6379');
-            try {
-                $r = new \Redis();
-                if (@$r->connect($host, (int) $port, 0.25, null, 0, 0.25)) {
-                    if (self::$pakaiPemutus) {
-                        @unlink(self::berkasPemutus());
-                    }
-                    return self::$klien = $r;
-                }
-            } catch (\Throwable) {
+        $hasil = self::penemu()->cari($paksa);
+        if ($hasil !== null && $hasil[0] instanceof \Redis) {
+            if (self::$pakaiPemutus) {
+                @unlink(self::berkasPemutus());
             }
+            return self::$klien = $hasil[0];
         }
         self::$gagalTerakhir = microtime(true);
         if (self::$pakaiPemutus) {

@@ -6,7 +6,7 @@ seluruh container dipulihkan kembali pada akhir pengujian:
   1. 1 replika poem-service mati -> POST & GET /api/puisi tetap 202/200.
   2. 1 MySQL Router (poem-db-router-1) mati -> POST & GET tetap 202/200 via router-2.
   3. Node Primary MySQL InnoDB Cluster mati -> failover otomatis ke Secondary, POST & GET tetap 202/200.
-  4. Redis mati -> GET /api/puisi tetap 200 dengan X-Cache-Layer: db.
+  4. Ketiga node Redis mati -> GET /api/puisi tetap 200 dengan X-Cache-Layer: db.
   5. 1 node RabbitMQ (rabbitmq-2) mati -> event outbox tetap terkirim ke quorum cluster.
   6. Seluruh node RabbitMQ (1..3) mati -> POST tetap 202 (disimpan di outbox),
      dan otomatis terkirim begitu RabbitMQ menyala kembali.
@@ -134,7 +134,9 @@ def pulihkan_semua():
             "puisi-poem-db-1-1",
             "puisi-poem-db-2-1",
             "puisi-poem-db-3-1",
-            "puisi-redis-1",
+            "puisi-redis-1-1",
+            "puisi-redis-2-1",
+            "puisi-redis-3-1",
             "puisi-rabbitmq-1-1",
             "puisi-rabbitmq-2-1",
             "puisi-rabbitmq-3-1",
@@ -193,8 +195,8 @@ def main():
         time.sleep(4)
         jalankan(["docker", "compose", "--profile", "puisi", "start", "poem-db-cluster-init"], check=False)
 
-        # 4. Matikan Redis -> degradasi aman ke DB
-        jalankan(["docker", "stop", "puisi-redis-1"], check=False)
+        # 4. Matikan ketiga node Redis -> degradasi aman ke DB
+        jalankan(["docker", "stop", "puisi-redis-1-1", "puisi-redis-2-1", "puisi-redis-3-1"], check=False)
         kode_get, hdr_get, _ = http_req("GET", f"/api/puisi?hal=1&per_hal=5&_cb={int(time.time())}")
         layer = hdr_get.get("X-Cache-Layer", hdr_get.get("x-cache-layer", ""))
         catat(
@@ -202,7 +204,7 @@ def main():
             kode_get == 200 and layer == "db",
             f"GET={kode_get}, X-Cache-Layer={layer}",
         )
-        jalankan(["docker", "start", "puisi-redis-1"], check=False)
+        jalankan(["docker", "start", "puisi-redis-1-1", "puisi-redis-2-1", "puisi-redis-3-1"], check=False)
 
         # 5. Matikan 1 node RabbitMQ (rabbitmq-2) -> quorum tetap jalan
         jalankan(["docker", "stop", "puisi-rabbitmq-2-1"], check=False)
@@ -245,7 +247,9 @@ def main():
                 "puisi-poem-db-1-1",
                 "puisi-poem-db-2-1",
                 "puisi-poem-db-3-1",
-                "puisi-redis-1",
+                "puisi-redis-1-1",
+                "puisi-redis-2-1",
+                "puisi-redis-3-1",
                 "puisi-rabbitmq-1-1",
                 "puisi-rabbitmq-2-1",
                 "puisi-rabbitmq-3-1",

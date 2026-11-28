@@ -1,0 +1,158 @@
+# docker compose --profile semua run --rm --no-deps poem-service vendor/bin/phpunit --testdox-text php://stdout
+PHPUnit 11.5.58 by Sebastian Bergmann and contributors.
+Runtime:       PHP 8.3.37
+Configuration: /var/www/html/phpunit.xml
+{"waktu":"2026-11-28T09:32:02.076+00:00","level":"WARNING","worker":"poem-service","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:02.080+00:00","level":"WARNING","worker":"poem-service","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:02.081+00:00","level":"INFO","worker":"poem-service","pesan":"circuit breaker tertutup kembali","tujuan":"db-a"}
+{"waktu":"2026-11-28T09:32:02.082+00:00","level":"WARNING","worker":"poem-service","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:02.083+00:00","level":"WARNING","worker":"poem-service","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":4,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:02.085+00:00","level":"WARNING","worker":"poem-service","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+Gabung Hasil (Puisi\Tests\GabungHasil)
+ [x] Kategori dan keyword kosong diisi oleh auto tagging
+ [x] Kategori dan keyword manual tidak tertimpa
+ [x] Status menjadi selesai setelah sumber wajib lengkap dan idempoten
+ [x] Gambar kutipan mengisi file gambar hanya bila kosong
+ [x] Audio siap mengisi url audio dan status audio
+ [x] Validasi amplop menolak pesan rusak
+Jwt (Puisi\Tests\Jwt)
+ [x] Token benar diterima sesuai vektor kontrak
+ [x] Token kedaluwarsa ditolak
+ [x] Token tanda tangan salah ditolak
+ [x] Token dengan kunci berbeda ditolak
+ [x] Token rusak ditolak
+ [x] Ekstrak bearer header
+Master Redis (Puisi\Tests\MasterRedis)
+ [x] Tanpa sentinel memilih node berperan master
+ [x] Alamat tersimpan dipakai tanpa round trip tambahan
+ [x] Alamat kedaluwarsa ditanyakan ulang ke sentinel
+ [x] Sentinel pertama mati sentinel kedua menjawab
+ [x] Jawaban sentinel basi diperiksa dengan role
+ [x] Saat promosi replika dipakai untuk membaca saja
+ [x] Semua mati gagal terbuka dan tidak mencoba lagi selama jeda
+ [x] Paksa mengabaikan ingatan node mati
+ [x] Lupakan membuat master dicari ulang
+ [x] Berkas rusak diabaikan
+Metrik Durasi (Puisi\Tests\MetrikDurasi)
+ [x] Ember kumulatif mulai dari batas pertama yang cukup
+ [x] Request cepat masuk semua ember
+ [x] Request sangat lambat hanya inf dan count
+ [x] Teks durasi format prometheus
+Pemutus (Puisi\Tests\Pemutus)
+ [x] Tetap tertutup di bawah ambang
+ [x] Terbuka setelah tiga gagal beruntun dan menolak cepat
+ [x] Sukses mengosongkan hitungan
+ [x] Half open hanya satu uji lalu tertutup bila sukses
+ [x] Half open gagal membuka lagi
+ [x] Keadaan dibagi antar instans di folder sama
+Ulang (Puisi\Tests\Ulang)
+ [x] Eksponensial dengan batas empat detik
+ [x] Jitter dalam rentang dua puluh persen
+ [x] Jitter menyebar jadwal
+Validasi (Puisi\Tests\Validasi)
+ [x] Kunci idempotensi opsional dan uuid diterima
+ [x] Kunci idempotensi tidak sah ditolak
+ [x] Sidik sama untuk isi sama dan beda untuk isi beda
+ [x] Judul atau isi kosong ditolak
+ [x] Kategori keyword dan gambar kosong menjadi null
+ [x] Pola file gambar sah diterima
+ [x] Pola file gambar salah ditolak
+Time: 00:00.060, Memory: 10.00 MB
+OK (42 tests, 914 assertions)
+
+# docker compose --profile semua run --rm --no-deps search-service vendor/bin/phpunit --testdox-text php://stdout
+PHPUnit 11.5.58 by Sebastian Bergmann and contributors.
+Runtime:       PHP 8.3.37
+Configuration: /var/www/html/phpunit.xml
+{"waktu":"2026-11-28T09:32:04.973+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"opensearch","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:04.977+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:04.981+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:04.982+00:00","level":"INFO","worker":"search-consumer","pesan":"circuit breaker tertutup kembali","tujuan":"db-a"}
+{"waktu":"2026-11-28T09:32:04.984+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:04.984+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":4,"jeda_detik":10}
+{"waktu":"2026-11-28T09:32:04.986+00:00","level":"WARNING","worker":"search-consumer","pesan":"circuit breaker terbuka","tujuan":"db-a","gagal_beruntun":3,"jeda_detik":10}
+Cache (Pencarian\Tests\Cache)
+ [x] Key basi tidak bergantung versi
+ [x] Key sama untuk urutan parameter berbeda
+ [x] Key berubah setelah versi naik
+ [x] Key memuat versi dan berawalan cari
+ [x] Parameter berbeda menghasilkan key berbeda
+ [x] Huruf besar kecil q tidak mempengaruhi key
+ [x] Parameter dibersihkan sama dengan query
+ [x] Parameter menolak hal buruk
+ [x] Tanpa redis semua operasi aman dan kosong
+Master Redis (Pencarian\Tests\MasterRedis)
+ [x] Tanpa sentinel memilih node berperan master
+ [x] Alamat tersimpan dipakai tanpa round trip tambahan
+ [x] Alamat kedaluwarsa ditanyakan ulang ke sentinel
+ [x] Sentinel pertama mati sentinel kedua menjawab
+ [x] Jawaban sentinel basi diperiksa dengan role
+ [x] Saat promosi replika dipakai untuk membaca saja
+ [x] Semua mati gagal terbuka dan tidak mencoba lagi selama jeda
+ [x] Paksa mengabaikan ingatan node mati
+ [x] Lupakan membuat master dicari ulang
+ [x] Berkas rusak diabaikan
+Open Search Pemutus (Pencarian\Tests\OpenSearchPemutus)
+ [x] Tiga kegagalan membuka sirkuit lalu gagal cepat
+ [x] Tanpa pemutus tetap mencoba setiap kali
+Pemutus (Pencarian\Tests\Pemutus)
+ [x] Tetap tertutup di bawah ambang
+ [x] Terbuka setelah tiga gagal beruntun dan menolak cepat
+ [x] Sukses mengosongkan hitungan
+ [x] Half open hanya satu uji lalu tertutup bila sukses
+ [x] Half open gagal membuka lagi
+ [x] Keadaan dibagi antar instans di folder sama
+Penangan (Pencarian\Tests\Penangan)
+ [x] Dibuat menulis hanya kolom milik sendiri
+ [x] Dibuat tanpa visibilitas tidak menulis visibilitas
+ [x] Visibilitas dinormalkan dan nilai asing menjadi privat
+ [x] Dibuat privat ditulis apa adanya
+ [x] Tanggal dari data bila ada
+ [x] Auto tagging menulis tag dan kategori saja
+ [x] Genre menulis genre saja
+ [x] Analisis tidak pernah menyentuh visibilitas
+ [x] Sumber lain dan tipe lain diabaikan
+ [x] Data rusak dilempar with data set "dibuat tanpa judul"
+ [x] Data rusak dilempar with data set "dibuat tanpa isi"
+ [x] Data rusak dilempar with data set "dibuat penulis angka"
+ [x] Data rusak dilempar with data set "analisis tanpa hasil"
+ [x] Data rusak dilempar with data set "analisis tanpa sumber"
+ [x] Amplop rusak ditolak with data set "bukan json"
+ [x] Amplop rusak ditolak with data set "bukan objek"
+ [x] Amplop rusak ditolak with data set "tanpa event_id"
+ [x] Amplop rusak ditolak with data set "tanpa tipe"
+ [x] Amplop rusak ditolak with data set "tanpa data"
+ [x] Amplop rusak ditolak with data set "puisi_id string"
+ [x] Amplop rusak ditolak with data set "puisi_id nol"
+ [x] Amplop rusak ditolak with data set "puisi_id desimal"
+Query Builder (Pencarian\Tests\QueryBuilder)
+ [x] Q kosong menjadi match all
+ [x] Q terisi menjadi multi match dengan bobot judul
+ [x] Filter genre dan tag hanya bila diisi
+ [x] Puisi privat tidak pernah lolos
+ [x] Halaman menentukan offset
+ [x] Hal buruk ditolak with data set "negatif"
+ [x] Hal buruk ditolak with data set "nol"
+ [x] Hal buruk ditolak with data set "huruf"
+ [x] Hal buruk ditolak with data set "desimal"
+ [x] Hal buruk ditolak with data set "kebesaran"
+ [x] Hal buruk ditolak with data set "plus"
+ [x] Kutip dan garis miring hanya menjadi teks
+ [x] Q dipotong di batas
+ [x] Hasil mengikuti kontrak dan meng escape potongan cadangan
+ [x] Hasil kosong bila respons kosong
+Terapkan (Pencarian\Tests\Terapkan)
+ [x] Update berubah mengembalikan true dan menunggu refresh
+ [x] Noop tidak dianggap berubah
+ [x] Event tanpa dampak tidak menyentuh open search
+ [x] Penolakan open search dilempar
+Ulang (Pencarian\Tests\Ulang)
+ [x] Eksponensial dengan batas empat detik
+ [x] Jitter dalam rentang dua puluh persen
+ [x] Jitter menyebar jadwal
+Time: 00:00.062, Memory: 10.00 MB
+OK (71 tests, 940 assertions)
+
+# ringkasan
+poem-service: 42 tes lulus [x], 0 gagal [ ]
+search-service: 71 tes lulus [x], 0 gagal [ ]

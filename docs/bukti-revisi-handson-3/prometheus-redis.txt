@@ -1,0 +1,23 @@
+# Query Prometheus setelah prometheus.yml multi-target, 2026-11-28 16:42:56 WIB
+# lalu lintas: galeri dengan parameter unik selama 75 detik (melewati cache gateway)
+# Deret instance=redis-exporter:9121 adalah sisa job lama sebelum Prometheus dimuat ulang; hilang setelah 5 menit.
+# Query panel juga dijalankan lewat API Grafana (/api/ds/query, datasource Prometheus): 0.9968.
+# redis_up: redis_up
+  instance=redis-exporter:9121 1
+  instance=redis://redis-sentinel-3:26379 1
+  instance=redis://redis-2:6379 1
+  instance=redis://redis-sentinel-1:26379 1
+  instance=redis://redis-sentinel-2:26379 1
+  instance=redis://redis-3:6379 1
+  instance=redis://redis-1:6379 1
+# peran node (redis_instance_info): redis_instance_info{role!=""}
+  instance=redis-exporter:9121,role=slave 1
+  instance=redis://redis-2:6379,role=slave 1
+  instance=redis://redis-3:6379,role=master 1
+  instance=redis://redis-1:6379,role=slave 1
+# hit ratio panel Grafana: sum(rate(redis_keyspace_hits_total[1m])) / (sum(rate(redis_keyspace_hits_total[1m])) + sum(rate(redis_keyspace_misses_total[1m])) > 0)
+  - 0.9978947368421053
+# Sentinel: master yang dipantau: redis_sentinel_master_status
+  instance=redis://redis-sentinel-3:26379,master_address=10.231.1.13:6379,master_name=puisi 1
+  instance=redis://redis-sentinel-1:26379,master_address=10.231.1.13:6379,master_name=puisi 1
+  instance=redis://redis-sentinel-2:26379,master_address=10.231.1.13:6379,master_name=puisi 1
