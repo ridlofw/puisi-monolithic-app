@@ -277,8 +277,30 @@ Paling ketat **s8** (212 MB tersedia) dan **s7** (swap 588 MB; worker suara 315 
 
 ## 8. Uji ketahanan (opsional): matikan satu server
 
-Dijalankan dengan 23 layanan (23 Nov) dan 39 layanan (24 Nov, Redis masih satu layanan). **Belum dengan 43 layanan (Redis Sentinel)**: yang sudah diuji 28 Nov untuk Redis
-adalah failover satu layanan Redis tanpa mematikan server (langkah 19). Mematikan server 1, 2, atau 3 akan sekaligus menguji RabbitMQ, OpenSearch, gateway, dan Redis Sentinel. Pantau lewat ALB satu kali per detik di CloudShell:
+### 8a. Cara cepat (28 Nov 2026): satu perintah per server
+
+```bash
+nohup bash -c 'bash ~/9server.sh tarik; bash ~/9server.sh matikan 4' > ~/puisi9/log-matikan.txt 2>&1 &
+tail -30 ~/puisi9/log-matikan.txt        # ulangi sampai muncul RINGKASAN
+```
+
+- `tarik` (sekali saja) menyalin semua image ke setiap server. Tanpanya, layanan yang dipindah Swarm ke server lain saat **s1** mati harus menarik image dari registry, padahal registry ada di s1.
+- `matikan <no>` menjalankan satu siklus: catat keadaan awal, jalankan pemantau lewat ALB (1 `GET /api/puisi` per detik, 1 kirim puisi berkunci tiap 5 detik, 10 menit),
+  **Stop** server itu, tunggu 60 detik, baca `hitung` dan ketiga klaster MySQL, jalankan `uji_e2e.py` lewat ALB **saat server masih mati** (fitur mana yang tetap jalan),
+  **Start** lagi, tunggu sampai `44 layanan penuh` dan 9 node `Ready`, lalu cetak ringkasan pemantau. `matikan semua` menjalankan s1 sampai s9 bergantian (sekitar 10 menit per server).
+- Sesudahnya jalankan `bash ~/9server.sh verifikasi` dan `bash ~/9server.sh redis`, lalu `bersihkan` (pemantau dan e2e membuat puisi uji).
+
+**Cara manual lewat konsol (bila dosen meminta server tertentu):** EC2 → Instances → centang `puisi-sN` → **Instance state → Stop instance** (bukan Terminate: Terminate menghapus server beserta
+datanya). Untuk menyalakan: **Instance state → Start instance**. Lewat CloudShell:
+`aws ec2 stop-instances --instance-ids $(awk -F'\t' '$1=="puisi-s4"{print $2}' ~/puisi9/servers.tsv)` dan `start-instances` dengan cara yang sama.
+Jalankan pemantau di bawah sebelum mematikan, supaya ada angka.
+
+**Membaca `hitung` saat server mati:** Swarm masih menghitung task di server yang mati sebagai "berjalan" sampai server itu kembali, jadi muncul angka aneh seperti
+`puisi_gateway 3/2` (3 berjalan dari 2 yang diminta). Itu bukan galat. Yang penting: node berstatus `Down`, dan layanan "bebas" (mis. `search-consumer`) dibuat ulang di server lain.
+
+#### Cara lama (pemantau manual) dan catatan sebelumnya
+
+Dijalankan dengan 23 layanan (23 Nov) dan 39 layanan (24 Nov, Redis masih satu layanan). Dengan 43 layanan: lihat bagian 11a (28 Nov). Pantau lewat ALB satu kali per detik di CloudShell:
 
 ```bash
 DNS=$(cat ~/puisi9/alb-dns); while true; do printf '%s ' "$(date +%T)"; curl -s -o /dev/null -m 4 -w '%{http_code}\n' "http://$DNS/healthz"; sleep 1; done | tee ~/puisi9/mon.log
@@ -469,9 +491,41 @@ halaman aplikasi lewat HTTPS: [`bukti-aws/28-aplikasi-9server-sentinel-lewat-htt
 | 19 ujiredis | **Dijalankan** | master awal `redis-1` (s1); 13:19:16 `scale puisi_redis-1=0`; `+sdown` 13:19:23, `+odown #quorum 2/2` 13:19:23, **`+switch-master ... redis-3` 13:19:25 (9 detik sesudah perintah)**; ketiga Sentinel menyebut `redis-3`, `sentinel_tilt:0`; `redis-1` dinyalakan lagi 13:19:30 dan **13 detik kemudian menjadi replika** (`mulai.sh: redis-1 menjadi replika dari redis-3`), `connected_slaves:2`. 118 probe `GET /api/puisi`, 0 gagal (catatan: gateway menyimpan `GET /api/puisi` di cache-nya sendiri, jadi angka ini **bukan** bukti ketersediaan Redis; buktinya ada di baris berikut, jalur tulis) |
 | 20 verifikasi + redis sesudah failover | **Dijalankan** | e2e **10 dari 10**; `puisi:galeri:versi` di master baru `redis-3` naik dari 23 ke 28 (aplikasi menulis ke master baru); REDIS OK |
 | 21 ujibaru | **Dijalankan** | **9 dari 9 pemeriksaan lulus** (kunci sama: id sama dan `Idempotent-Replay: true`; isi beda 409; kunci pendek 400; 120 GET tanpa 429; 300 POST cepat: 29 diteruskan, 271 `429` JSON). Catatan: baris "tabel idempotensi" mencetak `0` di ketiga node, padahal pemeriksaan langsung sesudahnya menemukan tabel itu di poem-db-1, -2, -3 dan baris perintah yang sama dijalankan ulang mencetak `1`. Penyebab angka 0 itu **belum dipastikan** |
-| 22, 23 bersihkan | **Dijalankan** (commit `ff2bc67`, perbaikan pesan `42a8061`) | 6 akun dan 7 puisi uji terhapus di semua tempat; galeri dan pencarian kosong lewat HTTPS; layanan tetap sehat |
+| 22, 23 bersihkan | **Dijalankan dua kali** (commit `ff2bc67`; versi untuk ribuan puisi `9d339c7` dan `1f2679e`) | pertama 6 akun dan 7 puisi uji; sesudah uji matikan server 19 akun dan 1.086 puisi uji. Keduanya bersih di semua tempat; galeri dan pencarian kosong lewat HTTPS; layanan tetap sehat |
+| Bagian 8a uji matikan s1 sampai s9 | **Dijalankan** (commit `c8958af`) | lihat tabel di bawah |
 | Jumlah resource | **Diperiksa** | 9 server, 2 Security Group, 1 ALB, **1 bucket, 1 Lambda, 1 CloudFront** |
 | Bagian 8b (hapus) | **Belum** (resource dibiarkan menyala sampai Ridlo mengizinkan penghapusan) | |
+
+**Uji matikan server s1 sampai s9 bergantian (28 Nov, 14:14 sampai 15:47 UTC, `bash ~/9server.sh matikan semua`, 43 layanan).**
+Sebelumnya `tarik` menyalin image ke semua server (perintah ini kini **terbukti** di AWS). Setiap siklus: pemantau lewat ALB 10 menit (1 `GET /api/puisi` per detik, 1 kirim puisi berkunci tiap 5 detik
+dengan kirim ulang otomatis bila 5xx), Stop, `uji_e2e.py` lewat ALB saat server mati, Start, tunggu `44 layanan penuh` dan 9 node `Ready`.
+
+| Server dimatikan | Yang ikut mati | Saat mati | Kembali penuh (sejak Stop) | Pemantau 10 menit |
+|---|---|---|---|---|
+| s1 | Leader Swarm, registry, gateway, RabbitMQ-1, OpenSearch-1, redis-1, sentinel-1 | e2e **10/10** | 248 detik | GET 590, gagal 6 (5 × 502, 1 habis waktu, semua dalam 20 detik pertama); tulis 118, **gagal 0** (2 dikirim ulang) |
+| s2 | gateway, RabbitMQ-2, OpenSearch-2, redis-2, sentinel-2, search-service | e2e **10/10** | 206 detik | GET 591, gagal 7; tulis 119, **gagal 0** (1 dikirim ulang) |
+| s3 | gateway, RabbitMQ-3, OpenSearch-3, **redis-3 (master Redis saat itu)**, sentinel-3 | e2e **9/10**: puisi baru belum muncul di pencarian dalam 90 detik; **beberapa menit kemudian terindeks** (tertunda, tidak hilang) | 213 detik | GET 594, gagal 6; tulis 119, **gagal 0** (1 dikirim ulang) |
+| s4 | **PRIMARY poem-db (poem-db-1)**, router-1 | PRIMARY pindah ke poem-db-3; e2e **10/10** | 142 detik; poem-db-1 kembali ONLINE SECONDARY | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+| s5 | poem-db-2, router-2 | e2e **10/10** | 143 detik; poem-db-2 kembali ONLINE (tampil di siklus berikutnya) | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+| s6 | **PRIMARY poem-db (poem-db-3)** | PRIMARY pindah ke poem-db-2; e2e **10/10** | 153 detik | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+| s7 | **SeaweedFS (audio)**, **PRIMARY auth-db dan tts-db** | PRIMARY auth pindah ke auth-db-3, tts ke tts-db-2; login tetap jalan; e2e **9/10: audio belum dibuat** (SPOF yang sudah diketahui). Sesudah s7 hidup, audio puisi itu **menyusul selesai** (`/audio/puisi_757.mp3`) | 273 detik; auth-db-1 dan tts-db-1 kembali SECONDARY | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+| s8 | **PRIMARY tts-db (tts-db-2)**, auth-db-2 | PRIMARY tts pindah ke tts-db-1; e2e **10/10** | 163 detik; tts-db-2 kembali SECONDARY | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+| s9 | **PRIMARY auth-db (auth-db-3)**, tts-db-3 | PRIMARY auth pindah ke auth-db-1; e2e **10/10** | 141 detik; auth-db-3 dan tts-db-3 kembali SECONDARY | GET 600, **gagal 0**; tulis 120, **gagal 0** |
+
+Pembacaan: **mematikan satu server mana pun tidak menghilangkan satu pun kiriman puisi**: 1.076 tulis berkunci, 0 gagal (4 berhasil lewat kirim ulang otomatis). Gangguan yang terlihat pengguna hanya
+(1) 5 sampai 7 `GET` gagal (`502` atau habis waktu) dalam sekitar 20 detik pertama saat server gateway (s1 sampai s3) dimatikan, karena ALB baru berhenti mengirim ke gateway itu sesudah pemeriksaan
+kesehatannya gagal beberapa kali; (2) audio tertunda saat s7 mati (SeaweedFS satu proses); (3) pengindeksan pencarian tertunda saat s3 mati. Keduanya **menyusul sendiri**: audio puisi uji
+selesai sesudah s7 hidup, dan pada pembersihan akhir **1.086 dari 1.086** puisi uji ternyata terindeks. Semua server kembali sendiri tanpa perbaikan manual.
+
+**Redis Sentinel per server (bukan hanya per layanan) kini terbukti:** sebelum uji, master Redis adalah `redis-3` (di s3). Sesudah semua siklus, `bash ~/9server.sh redis` menunjukkan master
+**`redis-1`**, 2 replika tersambung, ketiga Sentinel sepakat, `sentinel_tilt:0`: saat s3 dimatikan, Sentinel memindahkan master dan `redis-3` kembali sebagai replika.
+
+**Keadaan akhir (15:47 UTC):** `hitung` 44 penuh, 9 node sehat; poem-db, auth-db, tts-db masing-masing 3 ONLINE (PRIMARY kini poem-db-2, auth-db-1, tts-db-1); RabbitMQ 3 node,
+13 dari 13 antrean quorum beranggota 3 node; `REDIS OK`; `verifikasi` e2e **10 dari 10**. Lalu `bersihkan` menghapus 19 akun uji dan 1.086 puisi uji di semua tempat; galeri dan pencarian lewat HTTPS kosong.
+
+**Temuan selama uji:** (a) `hitung` saat server mati menampilkan angka seperti `3/2` (Swarm masih menghitung task di server yang mati); (b) sesi console AWS di Chrome kedaluwarsa di tengah uji
+(sekitar 15:00 UTC); proses `nohup` di CloudShell tetap berjalan, dan setelah Ridlo membuka console lagi, uji berlanjut tanpa ada server yang tertinggal mati; (c) keluaran SSM dipotong AWS di sekitar
+24 000 karakter, sehingga `bersihkan` versi pertama hanya melihat sebagian dari ribuan puisi uji. Diperbaiki (ringkasan per judul, id dalam satu baris, dicocokkan dengan `count`) sebelum ada yang dihapus.
 
 **Temuan 28 Nov: Sentinel masuk TILT saat server 1 membangun image.** Pada 13:03:29 sampai 13:03:53 UTC, ketika `image2` membangun `puisi-tts` di server 1,
 `redis-sentinel-1` (di server 1) tiga kali mencatat `+tilt #tilt mode entered`. Healthcheck-nya (`redis-cli -p 26379 ping`, batas 3 detik) tiga kali berturut-turut
@@ -484,7 +538,7 @@ Di Swarm, nama layanan (`redis-1` dan seterusnya) adalah VIP yang tetap ter-reso
 `Failed to resolve hostname 'redis-sentinel-2'` selama sekitar 9 detik (12:56:27 sampai 12:56:36), lalu hilang.
 
 **Memori 28 Nov (43 layanan):** lihat bagian 7. Paling ketat s8 (212 MB tersedia) dan s7 (swap 588 MB, worker suara 315 MiB). Stress test **belum** dijalankan
-(keputusan tempat uji belum diambil tim); uji matikan server dengan 43 layanan (bagian 8) juga **belum**.
+(keputusan tempat uji belum diambil tim). Uji matikan server s1 sampai s9 dengan 43 layanan **sudah** (tabel di atas).
 
 ### 11b. Putaran sebelumnya (23 dan 24 Nov 2026, Redis masih satu layanan, 38 layanan)
 

@@ -452,6 +452,111 @@ bash 9server.sh bersihkan (ulang, commit 42a8061): Tidak ada data uji. Selesai.
 == CloudFront WebACL pada distribusi: (kosong)
 == ALB atribut: idle_timeout.timeout_seconds 60 routing.http.drop_invalid_header_fields.enabled false
 
+##### tarik (commit c8958af): image ke semua server
+s1: ok localhost:5000/puisi-analisis-emosi:v4 ... puisi-gateway:v4-gw ... puisi-pencarian:v4   (s2, s3 sama)
+s4: ok localhost:5000/puisi-klasifikasi-genre:v4, puisi-poem:v4                                  (s5, s6 sama)
+s7: ok localhost:5000/puisi-auth:v4, puisi-tts:v4                                                (s8, s9 sama)
+
+##### Uji matikan s1 sampai s9 (bash ~/9server.sh matikan semua, 14:14:31 sampai 15:46:26 UTC)
+---- s1 (Leader, registry, gateway, RabbitMQ-1, OpenSearch-1, redis-1, sentinel-1)
+14:15:02 Stop s1
+14:15:34 s1 stopped (32 detik)
+-- saat s1 mati (14:16:34):
+BELUM PENUH: puisi_analisis-emosi 3/2      (Swarm masih menghitung task di node yang mati)
+BELUM PENUH: puisi_gateway 3/2
+BELUM PENUH: puisi_search-consumer 2/1
+38 layanan penuh, 6 belum; total 44
+1 Down Unreachable / 6 Ready / 1 Ready Leader / 1 Ready Reachable
+-- uji_e2e.py lewat ALB saat s1 mati: -- 10 dari 10 tahap LULUS
+14:17:00 Start s1
+14:19:10 sesudah Start (248 detik sejak Stop): 44 layanan penuh, 0 belum
+pemantau, baris bukan 200/202:
+14:15:05 get=502 / 14:15:08 get=502 / 14:15:11 get=502 / 14:15:13 get=200 tulis=202(percobaan 2) / 14:15:13 get=502 / 14:15:16 get=502 / 14:15:23 get=0 / 14:15:34 get=200 tulis=202(percobaan 2)
+RINGKASAN: GET 590 (gagal 6); tulis 118 (gagal 0, dikirim ulang 2 kali)
+---- s2
+14:25:18 Stop s2 / 14:25:50 stopped / e2e 10 dari 10 / 14:27:14 Start / 14:28:44 sesudah Start (206 detik sejak Stop)
+RINGKASAN: GET 591 (gagal 7); tulis 119 (gagal 0, dikirim ulang 1 kali)
+---- s3 (master Redis redis-3 saat itu)
+14:35:34 Stop s3
+pencarian BELUM GET /api/search?q=pinang -> 200, 2 hasil   -- 9 dari 10 tahap LULUS
+14:37:20 Start s3 / 14:39:07 sesudah Start (213 detik sejak Stop)
+pencarian sesudah s3 hidup: 3 [31, 150, 271]   (puisi 271 dari e2e saat s3 mati ikut terindeks)
+RINGKASAN: GET 594 (gagal 6); tulis 119 (gagal 0, dikirim ulang 1 kali)
+---- s4 (PRIMARY poem-db-1)
+14:45:45 Stop s4
+poem-db (dibaca dari s5): poem-db-2 ONLINE SECONDARY;poem-db-3 ONLINE PRIMARY
+-- 10 dari 10 tahap LULUS
+14:47:32 Start s4 / 14:48:07 sesudah Start (142 detik sejak Stop)
+poem-db (dibaca dari s4): poem-db-1 ONLINE SECONDARY;poem-db-2 ONLINE SECONDARY;poem-db-3 ONLINE PRIMARY
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+---- s5
+14:55:57 Stop s5 / e2e 10 dari 10 / 14:57:45 Start / 14:58:20 sesudah Start (143 detik sejak Stop)
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+(sekitar 15:00 sesi console AWS di Chrome kedaluwarsa; Ridlo membuka console lagi; proses nohup tetap berjalan; kesembilan server running)
+---- s6 (PRIMARY poem-db-3)
+15:06:09 Stop s6
+poem-db (dibaca dari s4): poem-db-1 ONLINE SECONDARY;poem-db-2 ONLINE PRIMARY
+-- 10 dari 10 tahap LULUS
+15:08:06 Start s6 / 15:08:42 sesudah Start (153 detik sejak Stop)
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+---- s7 (SeaweedFS, PRIMARY auth-db-1 dan tts-db-1)
+15:16:22 Stop s7
+auth-db (dibaca dari s8): auth-db-2 ONLINE SECONDARY;auth-db-3 ONLINE PRIMARY
+tts-db (dibaca dari s8): tts-db-2 ONLINE PRIMARY;tts-db-3 ONLINE SECONDARY
+audio BELUM url_audio belum ada   -- 9 dari 10 tahap LULUS
+15:19:43 Start s7 / 15:20:55 sesudah Start (273 detik sejak Stop)
+auth-db: auth-db-1 ONLINE SECONDARY;auth-db-2 ONLINE SECONDARY;auth-db-3 ONLINE PRIMARY
+tts-db: tts-db-1 ONLINE SECONDARY;tts-db-2 ONLINE PRIMARY;tts-db-3 ONLINE SECONDARY
+puisi 757 (dikirim saat s7 mati), sesudah s7 hidup: selesai /audio/puisi_757.mp3
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+---- s8 (PRIMARY tts-db-2)
+15:26:35 Stop s8
+auth-db: auth-db-1 ONLINE SECONDARY;auth-db-3 ONLINE PRIMARY
+tts-db: tts-db-1 ONLINE PRIMARY;tts-db-3 ONLINE SECONDARY
+-- 10 dari 10 tahap LULUS
+15:28:25 Start s8 / 15:29:18 sesudah Start (163 detik sejak Stop)
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+---- s9 (PRIMARY auth-db-3)
+15:36:46 Stop s9
+auth-db: auth-db-1 ONLINE PRIMARY;auth-db-2 ONLINE SECONDARY
+tts-db: tts-db-1 ONLINE PRIMARY;tts-db-2 ONLINE SECONDARY
+-- 10 dari 10 tahap LULUS
+15:38:32 Start s9 / 15:39:07 sesudah Start (141 detik sejak Stop)
+auth-db: auth-db-1 ONLINE PRIMARY;auth-db-2 ONLINE SECONDARY;auth-db-3 ONLINE SECONDARY
+RINGKASAN: GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali)
+Sat Nov 28 03:46:26 PM UTC 2026
+MATIKAN-SEMUA-SELESAI
+
+##### Keadaan akhir sesudah uji matikan
+44 layanan penuh, 0 belum; total 44  (6 Ready, 1 Ready Leader, 2 Ready Reachable)
+poem-db: poem-db-1 ONLINE SECONDARY;poem-db-2 ONLINE PRIMARY;poem-db-3 ONLINE SECONDARY
+auth-db: auth-db-1 ONLINE PRIMARY;auth-db-2 ONLINE SECONDARY;auth-db-3 ONLINE SECONDARY
+tts-db: tts-db-1 ONLINE PRIMARY;tts-db-2 ONLINE SECONDARY;tts-db-3 ONLINE SECONDARY
+redis-1: role:master connected_slaves:2
+redis-2: role:slave master_host:redis-1 master_link_status:up
+redis-3: role:slave master_host:redis-1 master_link_status:up
+redis-sentinel-1/2/3: master=redis-1 sentinel_tilt:0
+REDIS OK: 1 master (redis-1), 2 replika tersambung, 3 Sentinel sepakat, tilt 0
+rabbit@rabbitmq-1 / rabbit@rabbitmq-2 / rabbit@rabbitmq-3
+13 dari 13 antrean quorum beranggota 3 node
+verifikasi: -- 10 dari 10 tahap LULUS
+
+##### bersihkan sesudah uji matikan (commit 1f2679e)
+(versi pertama: daftar terpotong oleh batas keluaran SSM, 575 dari 1086 puisi terbaca; tidak ada yang dihapus; skrip diperbaiki)
+PRIMARY: poem-db-2 (s5), auth-db-1 (s7), tts-db-1 (s7)
+19 akun uji (e2e... Penyair E2E, uji... Penguji Ketahanan)
+1076 puisi berjudul "Uji pantau ..." (id 8 sampai 1092)
+10 puisi berjudul "Pagi di ..." (id 31 sampai 1093)
+Jumlah: 19 akun uji, 1086 puisi uji. Puisi lain tidak disentuh.
+sisa job: 0
+s7: audio dihapus untuk 1086 puisi, sisa: 0
+"total":1086 "deleted":1086 "failures":[]
+sisa puisi uji: 0
+sisa akun uji: 0
+master redis-1: galeri versi 6103, cari versi 3274
+galeri: {"status":"sukses","pesan":"Daftar puisi berhasil dimuat.","data":[]}
+cari: {"status":"sukses","pesan":"Pencarian selesai.","data":[],"total":0,"hal":1}
+
 ##### Pemeriksaan ulang tabel idempotensi (sesudah ujibaru)
 show tables from poem_db (poem-db-1): idempotensi, outbox, puisi
 poem-db-1 (s4): idempotensi$

@@ -38,6 +38,18 @@ Pilihan tempat alat beban (belum diputuskan tim):
 | **EC2 di akun teman** (disarankan) | satu region, latensi rendah; bisa beberapa server = beberapa IP; tidak memakai slot 9 server milik akun yang diuji | butuh akun kedua; Single di akun teman harus dimatikan saat menguji Scalable, atau sebaliknya alat beban dipasang di akun yang tidak sedang dipakai |
 | Lambda sebagai alat beban | banyak eksekusi dan IP | perlu dibuat dan diuji dulu |
 
+**Menangani batas 429 (usulan, belum diputuskan tim; menyangkut kode gateway milik Pison):**
+
+| Cara | Penilaian |
+|---|---|
+| Menghapus kode pembatas | **Tidak disarankan.** Pembatas adalah bagian arsitektur (melindungi server dari banjir permintaan). Sistem yang diuji harus sama dengan yang dipresentasikan |
+| Proxy / mengganti-ganti IP palsu | **Tidak disarankan.** Proxy menambah jeda dan ikut terukur, hasilnya tidak bisa diulang, dan sama saja dengan mengakali proteksi sendiri |
+| **A. Uji realistis:** pembatas tetap aktif, beban dikirim dari **beberapa mesin** (beberapa IP), seperti banyak pengunjung sungguhan | Disarankan untuk menjawab "bagaimana sistem saat banyak orang memakainya". 429 dilaporkan sebagai bukti proteksi bekerja |
+| **B. Uji kapasitas:** batas pembatas dibuat **bisa diatur lewat konfigurasi** (bukan dihapus), lalu dinaikkan tinggi khusus di lingkungan uji, sama untuk Single dan Scalable, dan ditulis jelas di laporan | Disarankan untuk mencari titik hancur server. Ini praktik umum: nilai batas berbeda antara lingkungan uji dan produksi, kodenya sama |
+
+Saran: jalankan **B** untuk perbandingan titik jenuh dan titik hancur Single vs Scalable (tanpa B, angka maksimal hanyalah angka pembatas, dan Scalable otomatis
+"3 kali lebih baik" hanya karena punya 3 gateway), lalu satu putaran **A** untuk menunjukkan perilaku nyata. Perubahan B butuh persetujuan Pison sebagai pemilik gateway.
+
 Instance AWS dipakai bukan karena "internetnya kencang" saja, melainkan karena letaknya dekat dengan server (jeda jaringan kecil dan stabil), jadi yang terukur benar-benar
 kemampuan aplikasi, bukan internet di antaranya. Satu hal yang **belum saya cek**: aturan pemakaian AWS Academy dan kebijakan AWS untuk uji beban
 bervolume sangat besar (yang menyerupai serangan). Uji beban terhadap aplikasi sendiri dengan volume wajar umumnya diperbolehkan; periksa halaman aturan lab sebelum menjalankan uji besar.

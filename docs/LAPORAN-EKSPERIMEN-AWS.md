@@ -17,7 +17,8 @@ Semua angka diambil dari keluaran yang tampil di terminal AWS CloudShell hari it
 |---|---|
 | Bisakah seluruh aplikasi (38 layanan) berjalan di sandbox? | **Ya**: 9 server `t3.small`, 39 layanan penuh (38 + registry), `uji_e2e.py` **10 dari 10**. Dicapai dua tahap: 23 layanan, lalu pencarian dan TTS ditambahkan |
 | Dan versi final dengan Redis Sentinel (43 layanan)? | **Ya (28 Nov)**: 44 layanan penuh (43 + registry), `uji_e2e.py` **10 dari 10** dari dalam server, lewat ALB, dan lewat HTTPS CloudFront |
-| Apakah Redis Sentinel bekerja di Swarm? | **Ya, untuk matinya satu layanan Redis (28 Nov)**: master di-scale ke 0, Sentinel memindahkan master dalam 9 detik, node lama kembali sebagai replika, aplikasi menulis ke master baru. **Belum** diuji dengan mematikan server 1, 2, atau 3 |
+| Apakah Redis Sentinel bekerja di Swarm? | **Ya, untuk matinya satu layanan Redis (28 Nov)**: master di-scale ke 0, Sentinel memindahkan master dalam 9 detik, node lama kembali sebagai replika, aplikasi menulis ke master baru. **Juga per server**: saat s3 (pemegang master `redis-3`) dimatikan, master pindah ke `redis-1` |
+| Tahan satu server mana pun mati (43 layanan)? | **Ya (28 Nov, s1 sampai s9 bergantian)**: 0 dari 1.076 kiriman puisi gagal; hanya beberapa `GET` gagal dalam 20 detik saat gateway (s1 sampai s3) mati; audio (s7) dan pencarian (s3) tertunda lalu menyusul; semua server kembali sendiri dalam 141 sampai 273 detik |
 | Bisakah HTTPS? | **Ya, hanya lewat CloudFront.** ALB tidak bisa HTTPS di sandbox (ACM dan Route 53 tidak ada) |
 | Apakah frontend bisa dilayani dari S3? | **Ya.** CloudFront dua jalur: halaman dari S3, `/api` dan `/audio` ke ALB, `/fungsi` ke Lambda. 8/8 uji skrip, e2e 10/10 dari luar |
 | Tahan satu server mati? | **Terbukti dengan 23 layanan**: 0 dari 258 probe gagal saat s4 mati, PRIMARY database pindah otomatis, pulih ± 100 detik. **Belum dengan 38 layanan** |
@@ -231,8 +232,7 @@ Semua di `deploy/` dan `docs/`. **Berkas tim di `web/`, `gateway/`, `services/`,
 
 ## 7. Yang belum dibuktikan, dan skenario uji lanjutan
 
-**Belum dibuktikan:** uji matikan server dan pemulihan dengan **43 layanan** (24 Nov sudah dengan 39 layanan, Redis tunggal); failover Redis karena **server** 1, 2, atau 3 mati (28 Nov hanya satu layanan
-di-scale ke 0); memori di bawah beban banyak pengguna (stress test menunggu keputusan tim); pemutar audio di layar; `start-first` untuk menghilangkan 502 saat rolling update; ECR; observability, k6, CI;
+**Sudah (28 Nov):** uji matikan server s1 sampai s9 bergantian dengan 43 layanan, termasuk failover Redis karena server (s3) mati. **Belum dibuktikan:** dua server mati bersamaan, satu zona mati; memori di bawah beban banyak pengguna (stress test menunggu keputusan tim); pemutar audio di layar; `start-first` untuk menghilangkan 502 saat rolling update; ECR; observability, k6, CI;
 scale-out (tidak ada server ke-10). Deploy ulang dari nol dalam satu kali jalan **sudah** (24 dan 28 Nov).
 
 **Skenario uji lanjutan** (dijalankan **satu per satu**, pulihkan penuh dan jalankan `hitung` serta `verifikasi` sebelum yang berikutnya; matikan dengan **Stop**, bukan Terminate):
@@ -240,8 +240,9 @@ scale-out (tidak ada server ke-10). Deploy ulang dari nol dalam satu kali jalan 
 | # | Skenario | Cara | Harus tetap | Diperkirakan | Status |
 |---|---|---|---|---|---|
 | S1 | s4 mati (PRIMARY poem-db, 1 dari 3 poem-service) | Stop s4 | semuanya | 0 probe gagal | **Dijalankan (23 layanan)** |
-| S2 | s7 mati (SeaweedFS, tts-db-1, auth-db-1) | Stop s7 | semua kecuali **audio** | audio berhenti: SPOF yang diketahui | belum |
-| S3 | s1 mati (manager, gateway, RabbitMQ-1, OpenSearch-1, sejak 28 Nov juga redis-1 dan redis-sentinel-1) | Stop s1 | semuanya lewat ALB (gateway di s2 dan s3); bila redis-1 master, Sentinel di s2 dan s3 memilih master baru | ± 20 detik sampai ALB menandai tidak sehat | belum |
+| S2 | s7 mati (SeaweedFS, tts-db-1, auth-db-1) | Stop s7 | semua kecuali **audio** | audio berhenti: SPOF yang diketahui | **Dijalankan 28 Nov**: sesuai prediksi; audio menyusul sesudah s7 hidup; 0 tulis gagal |
+| S3 | s1 mati (manager, gateway, RabbitMQ-1, OpenSearch-1, sejak 28 Nov juga redis-1 dan redis-sentinel-1) | Stop s1 | semuanya lewat ALB (gateway di s2 dan s3); bila redis-1 master, Sentinel di s2 dan s3 memilih master baru | ± 20 detik sampai ALB menandai tidak sehat | **Dijalankan 28 Nov**: e2e 10/10; 6 GET gagal dalam 20 detik pertama; 0 tulis gagal |
+| S1b sampai S3b | setiap server lain (s2 sampai s6, s8, s9) | `bash ~/9server.sh matikan semua` | semuanya | | **Dijalankan 28 Nov**: lihat `PANDUAN-DEPLOY-AWS.md` bagian 11a |
 | S10 | master Redis mati (layanan saja) | `bash ~/9server.sh ujiredis` | aplikasi menulis ke master baru | failover dalam detik | **Dijalankan 28 Nov**: 9 detik, node lama kembali replika, e2e 10/10 sesudahnya |
 | S4 | satu node OpenSearch mati | Stop s2 | pencarian (hijau → kuning → pulih) | jeda singkat | belum |
 | S5 | satu zona mati (s1, s4, s7) | Stop tiga server | diperkirakan tetap jalan, audio tidak | beberapa PRIMARY pindah bersamaan | belum |
@@ -268,7 +269,10 @@ Untuk versi final (28 Nov):
 > "Versi final (43 layanan, termasuk Redis 3 node dengan 3 Sentinel) dideploy dari nol dengan kode dari GitHub dalam 30 menit dan lulus `uji_e2e.py` 10 dari 10 lewat HTTPS CloudFront.
 > Saat layanan master Redis dimatikan, Sentinel memilih master baru dalam 9 detik, node lama kembali sebagai replika, dan aplikasi tetap menulis ke master baru."
 
-**Jangan menulis "bebas SPOF"**: SeaweedFS satu proses, registry satu salinan, failover Redis baru diuji per layanan (bukan per server), dan uji matikan server belum dengan 43 layanan.
+> "Kesembilan server dimatikan bergantian satu per satu. Tidak ada satu pun dari 1.076 kiriman puisi yang hilang, database dan Redis memindahkan PRIMARY/master sendiri, dan setiap server
+> kembali bergabung sendiri dalam 2 sampai 5 menit. Yang terasa pengguna hanya beberapa galat dalam 20 detik saat server gateway mati, serta audio yang tertunda saat server penyimpanan audio mati."
+
+**Jangan menulis "bebas SPOF"**: SeaweedFS (audio) satu proses, registry satu salinan, dua server mati bersamaan dan satu zona mati belum diuji.
 
 ---
 
