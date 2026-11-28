@@ -399,8 +399,8 @@ bersihkan() {
   # Keluaran SSM dipotong AWS di sekitar 24 000 karakter (terjadi 28 Nov: 1 000+ puisi uji sesudah uji matikan server). Karena itu daftar
   # puisi diringkas per judul, dan semua id diambil dalam SATU baris group_concat, lalu jumlahnya dicocokkan dengan count(*).
   echo "==== Puisi milik akun uji (poem-db), diringkas per judul ===="
-  P="$(sql_di "$pno" "$pnama" "$pw" poem_db "select count(*), left(judul, 30), min(id), max(id) from puisi where user_id in ('${uid//,/\',\'}') group by left(judul, 30) order by min(id)")"
-  echo "$P" | sed '/^$/d' | awk -F'\t' '{printf "%s puisi \"%s\" (id %s sampai %s)\n", $1, $2, $3, $4}'
+  P="$(sql_di "$pno" "$pnama" "$pw" poem_db "select count(*), substring_index(judul, ' ', 2) j, min(id), max(id) from puisi where user_id in ('${uid//,/\',\'}') group by j order by min(id)")"
+  echo "$P" | sed '/^$/d' | awk -F'\t' '{printf "%s puisi berjudul \"%s ...\" (id %s sampai %s)\n", $1, $2, $3, $4}'
   pid="$(sql_di "$pno" "$pnama" "$pw" poem_db "set session group_concat_max_len = 4000000; select group_concat(id order by id separator ',') from puisi where user_id in ('${uid//,/\',\'}')" | tr -d '[:space:]' | sed 's/NULL//')"
   n="$(sql_di "$pno" "$pnama" "$pw" poem_db "select count(*) from puisi where user_id in ('${uid//,/\',\'}')" | tr -d '[:space:]')"
   [ "$(echo "${pid:-}" | tr ',' '\n' | sed '/^$/d' | wc -l)" = "${n:-0}" ] || gagal "daftar id puisi tidak lengkap (${n:-?} puisi, id terbaca $(echo "$pid" | tr ',' '\n' | sed '/^$/d' | wc -l)); tidak ada yang dihapus"
