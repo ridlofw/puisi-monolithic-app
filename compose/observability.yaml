@@ -67,11 +67,12 @@ services:
       - semua
     restart: unless-stopped
 
+  # node Redis dan Sentinel yang diambil metriknya ditentukan Prometheus lewat /scrape?target=
   redis-exporter:
     image: oliver006/redis_exporter:v1.58.0
     container_name: puisi-redis-exporter
     environment:
-      - REDIS_ADDR=redis://redis:6379
+      - REDIS_ADDR=redis://redis-1:6379
     profiles:
       - observability
       - semua

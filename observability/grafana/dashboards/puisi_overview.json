@@ -247,7 +247,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(redis_keyspace_hits_total[1m]) / (rate(redis_keyspace_hits_total[1m]) + rate(redis_keyspace_misses_total[1m]) > 0)",
+          "expr": "sum(rate(redis_keyspace_hits_total[1m])) / (sum(rate(redis_keyspace_hits_total[1m])) + sum(rate(redis_keyspace_misses_total[1m])) > 0)",
           "legendFormat": "Hit Ratio",
           "range": true,
           "refId": "A"

@@ -9,8 +9,10 @@ jadi jalankan dari akar repositori saat stack --profile semua menyala.
 import argparse
 import json
 import os
+import random
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -165,7 +167,7 @@ def cari(q):
 
 
 def tahap_pemutus_opensearch(lap, token):
-    naikkan = lambda: compose('exec', '-T', 'redis', 'redis-cli', 'INCR', 'cari:versi')  # noqa: E731
+    naikkan = lambda: redis_cli(redis_master() or 'redis-1', 'INCR', 'cari:versi')  # noqa: E731
     naikkan()
     k0, _, lapis0, _ = cari('pinang')
     compose('pause', 'opensearch')
@@ -285,6 +287,189 @@ def tahap_throttling(lap, token):
     lap.catat('throttling-galeri-bebas', k == 200, 'GET galeri tetap 200 setelah throttling')
 
 
+REDIS = ('redis-1', 'redis-2', 'redis-3')
+IP_REDIS = {'10.231.1.11': 'redis-1', '10.231.1.12': 'redis-2', '10.231.1.13': 'redis-3'}  # compose/infra.yaml
+
+
+def redis_cli(layanan, *perintah, port='6379'):
+    r = compose('exec', '-T', layanan, 'redis-cli', '-p', port, *perintah)
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+
+def redis_master():
+    for n in REDIS:
+        if redis_cli(n, 'ROLE').startswith('master'):
+            return n
+    return None
+
+
+def master_sentinel():
+    ip = redis_cli('redis-sentinel-1', 'SENTINEL', 'get-master-addr-by-name', 'puisi', port='26379').split('\n')[0]
+    return IP_REDIS.get(ip, ip)
+
+
+def tunggu_stabil(batas=60):
+    # master menurut Sentinel juga master menurut ROLE dan punya dua replika tersambung
+    mulai = time.time()
+    while time.time() - mulai < batas:
+        m = master_sentinel()
+        if m in REDIS:
+            info = redis_cli(m, 'INFO', 'replication')
+            if 'role:master' in info and 'connected_slaves:2' in info:
+                return m
+        time.sleep(1)
+    return None
+
+
+def galeri(hal=1):
+    # _u membuat kunci proxy_cache Nginx unik, jadi yang menjawab selalu poem-service (dari Redis atau DB)
+    k, _, h, d = http('GET', '/api/puisi?hal=%d&_u=%s' % (hal, uuid.uuid4().hex[:8]), timeout=5)
+    return k, {x.lower(): y for x, y in h.items()}.get('x-cache-layer'), d
+
+
+def log_sentinel():
+    log = compose('logs', '--no-log-prefix', 'redis-sentinel-1').stdout.splitlines()
+    return [b.strip() for b in log if '+sdown master' in b or '+odown' in b or '+switch-master' in b][-3:]
+
+
+def tunggu_promosi(lama, mulai, batas=30):
+    while time.time() - mulai < batas:
+        m = master_sentinel()
+        if m and m != lama:
+            return m, time.time() - mulai
+        time.sleep(0.3)
+    return None, None
+
+
+def tahap_redis_failover(lap, token):
+    lama = tunggu_stabil()
+    galeri()
+    k0, lapis0, _ = galeri()
+    if not lap.catat('redis-awal', lama is not None and k0 == 200 and lapis0 == 'redis',
+                     'master %s, galeri -> %s lapis %s' % (lama, k0, lapis0)):
+        return
+    mulai = time.time()
+    compose('stop', lama)
+    probe, baru, detik = [], None, None
+    while time.time() - mulai < 40:
+        k, lapis, d = galeri()
+        probe.append((k, lapis, d))
+        if baru is None:
+            m = master_sentinel()
+            if m and m != lama:
+                baru, detik = m, time.time() - mulai
+        elif time.time() - mulai > detik + 5:
+            break
+        time.sleep(0.2)
+    for baris in log_sentinel():
+        print('    sentinel: ' + baris)
+    lap.catat('redis-failover-promosi', baru is not None and detik < 15,
+              'master %s dihentikan, Sentinel menunjuk %s setelah %s detik'
+              % (lama, baru, ('%.1f' % detik) if detik else '-'))
+    galat = sum(1 for k, _, _ in probe if k != 200)
+    lapis = {}
+    for _, x, _ in probe:
+        lapis[x] = lapis.get(x, 0) + 1
+    lap.catat('redis-failover-galat', galat == 0,
+              '%d probe galeri selama failover, %d galat, lapis %s, terlama %.0f ms'
+              % (len(probe), galat, lapis, max(d for _, _, d in probe) * 1000))
+    hal = random.randint(10000, 99999)
+    k1, l1, _ = galeri(hal)
+    k2, l2, _ = galeri(hal)
+    lap.catat('redis-failover-tulis', k1 == 200 and k2 == 200 and l2 == 'redis',
+              'kunci baru hal=%d: %s lalu %s (cache ditulis ke master baru)' % (hal, l1, l2))
+    compose('start', lama)
+    peran = ''
+    for _ in range(30):
+        peran = redis_cli(lama, 'ROLE').split('\n')[0]
+        if peran == 'slave':
+            break
+        time.sleep(1)
+    lap.catat('redis-lama-jadi-replika', peran == 'slave' and tunggu_stabil() is not None,
+              '%s menyala lagi sebagai %s, klaster kembali 1 master 2 replika' % (lama, peran or '-'))
+
+
+def tahap_redis_mati(lap, token):
+    compose('stop', *REDIS)
+    try:
+        hasil = [galeri() for _ in range(10)]
+    finally:
+        compose('start', *REDIS)
+    durasi = sorted(d for _, _, d in hasil)
+    lap.catat('redis-mati-ke-db', all(k == 200 and x == 'db' for k, x, _ in hasil),
+              'ketiga node Redis berhenti, 10 galeri -> %s lapis %s, median %.0f ms, terlama %.0f ms'
+              % (sorted({k for k, _, _ in hasil}), sorted({str(x) for _, x, _ in hasil}),
+                 durasi[len(durasi) // 2] * 1000, durasi[-1] * 1000))
+    mulai = time.time()
+    master = tunggu_stabil()
+    galeri()
+    _, lapis, _ = galeri()
+    lap.catat('redis-mati-pulih', master is not None and lapis == 'redis',
+              'Redis menyala lagi, master %s dengan 2 replika setelah %.0f detik, galeri lapis %s'
+              % (master, time.time() - mulai, lapis))
+
+
+def statistik_redis():
+    hasil = {}
+    for n in REDIS:
+        teks = redis_cli(n, 'INFO', 'stats').replace('\r', '')
+        d = dict(b.split(':', 1) for b in teks.split('\n') if ':' in b)
+        if 'keyspace_hits' in d:
+            hasil[n] = (int(d['keyspace_hits']), int(d['keyspace_misses']))
+    return hasil
+
+
+def rasio_hit(awal, akhir):
+    hit = miss = 0
+    for n, (h0, m0) in awal.items():
+        if n in akhir and akhir[n][0] >= h0:
+            hit += akhir[n][0] - h0
+            miss += akhir[n][1] - m0
+    return (100.0 * hit / (hit + miss) if hit + miss else None), hit + miss
+
+
+def tahap_redis_stres(lap, token, pengguna=40, detik=45):
+    lama = tunggu_stabil()
+    if not lap.catat('redis-stres-awal', lama is not None, 'klaster stabil, master %s' % lama):
+        return
+    berkas = os.path.join(tempfile.gettempdir(), 'redis-stres-%s.json' % uuid.uuid4().hex[:8])
+    jalan = subprocess.Popen([sys.executable, os.path.join(AKAR, 'scripts', 'uji_stres.py'), '--tahap', str(pengguna),
+                              '--detik', str(detik), '--json', berkas], cwd=AKAR, stdout=subprocess.PIPE, text=True)
+    mulai = time.time()
+    time.sleep(3)
+    s0 = statistik_redis()
+    time.sleep(9)
+    s1 = statistik_redis()
+    mati = time.time()
+    compose('stop', lama)
+    baru, promosi = tunggu_promosi(lama, mati)
+    s2 = statistik_redis()
+    keluaran = jalan.communicate()[0]
+    s3 = statistik_redis()
+    compose('start', lama)
+    stabil = tunggu_stabil()
+    print('    ' + keluaran.strip().replace('\n', '\n    '))
+    for baris in log_sentinel():
+        print('    sentinel: ' + baris)
+    try:
+        with open(berkas, encoding='utf-8') as f:
+            h = json.load(f)['tahap'][0]
+        os.remove(berkas)
+    except (OSError, ValueError, KeyError, IndexError):
+        h = {}
+    lap.catat('redis-stres-promosi', baru is not None and stabil is not None,
+              '%d pengguna %d detik, master %s dihentikan pada detik %.0f, %s menjadi master setelah %s detik'
+              % (pengguna, detik, lama, mati - mulai, baru, ('%.1f' % promosi) if promosi else '-'))
+    lap.catat('redis-stres-galat', h.get('galat_persen', 100) < 1,
+              '%s request, %s rps, P99 %s ms, galat %s persen, 429 %s persen'
+              % (h.get('request'), h.get('rps'), h.get('p99_ms'), h.get('galat_persen'), h.get('dibatasi_persen')))
+    r1, n1 = rasio_hit(s0, s1)
+    r3, n3 = rasio_hit(s2, s3)
+    lap.catat('redis-stres-hit-pulih', r1 is not None and r3 is not None and r3 >= r1 - 10,
+              'hit ratio Redis sebelum failover %s (%d baca), setelah promosi %s (%d baca)'
+              % (('%.1f%%' % r1) if r1 is not None else '-', n1, ('%.1f%%' % r3) if r3 is not None else '-', n3))
+
+
 TAHAP = {
     'idempotensi': tahap_idempotensi,
     'pemutus-db': tahap_pemutus_db,
@@ -293,6 +478,9 @@ TAHAP = {
     'indeks-paralel': tahap_indeks_paralel,
     'gateway-vip': tahap_gateway_vip,
     'throttling': tahap_throttling,
+    'redis-failover': tahap_redis_failover,
+    'redis-mati': tahap_redis_mati,
+    'redis-stres': tahap_redis_stres,
 }
 
 

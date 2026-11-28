@@ -21,7 +21,10 @@ x-puisi-env: &puisi-env
   DB_NAME: poem_db
   DB_USER: poem
   DB_PASS: poem
-  REDIS_HOSTS: redis:6379
+  # IP tetap redis-1..3 dan Sentinel di jaringan redis-ha (compose/infra.yaml). Nama host yang hilang saat node
+  # berhenti butuh sekitar 4 detik untuk gagal di-resolve di container Debian, IP tidak butuh DNS sama sekali
+  REDIS_HOSTS: 10.231.1.11:6379,10.231.1.12:6379,10.231.1.13:6379
+  REDIS_SENTINELS: 10.231.1.21:26379,10.231.1.22:26379,10.231.1.23:26379
   AMQP_URLS: amqp://puisi:puisi@rabbitmq-1:5672/%2F,amqp://puisi:puisi@rabbitmq-2:5672/%2F,amqp://puisi:puisi@rabbitmq-3:5672/%2F
   SUMBER_WAJIB: auto-tagging,klasifikasi-genre
 
@@ -141,6 +144,7 @@ services:
 
   poem-service:
     build: ./services/puisi
+    networks: [default, redis-ha]
     profiles: ["puisi", "semua"]
     restart: unless-stopped
     deploy:
@@ -159,6 +163,7 @@ services:
 
   poem-relay:
     build: ./services/puisi
+    networks: [default, redis-ha]
     command: ["php", "bin/relay.php"]
     profiles: ["puisi", "semua"]
     restart: unless-stopped
@@ -184,6 +189,7 @@ services:
 
   poem-consumer:
     build: ./services/puisi
+    networks: [default, redis-ha]
     command: ["php", "bin/consumer.php"]
     profiles: ["puisi", "semua"]
     restart: unless-stopped
