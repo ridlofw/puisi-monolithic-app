@@ -13,6 +13,7 @@ Dijalankan 28 November 2026 di Docker Compose laptop Ridlo (Windows 11, Docker D
 | `uji-e2e.txt` | Alur ujung ke ujung, 10 dari 10 LULUS | `python scripts/uji_e2e.py` |
 | `sentinel-failover.log` | Baris `+sdown`, `+odown`, `+switch-master`, `+convert-to-slave` dari log `redis-sentinel-1` | `docker compose logs redis-sentinel-1` |
 | `ram.txt` | RAM Redis tunggal lama dibanding enam container Redis dan Sentinel | `docker stats --no-stream` |
+| `prometheus-redis.txt` | Enam target redis-exporter (3 node, 3 Sentinel) `up`, peran node, master menurut Sentinel, dan nilai query panel hit ratio Grafana | API Prometheus dan Grafana |
 | `tarik-image-dry-run.txt` | Rencana `9server.sh tarik` (S3) dalam mode `DRY=1`, tanpa AWS | `DRY=1 bash deploy/aws/9server.sh tarik` |
 
 Waktu di log Sentinel memakai UTC (WIB dikurangi 7 jam). Baris `+sdown master` tanpa `+switch-master`

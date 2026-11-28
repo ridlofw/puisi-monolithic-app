@@ -184,8 +184,8 @@ lagi.
 
 **S3, registry.** `bash deploy/aws/9server.sh tarik` menarik image `localhost:5000` ke setiap server yang
 boleh menjalankannya (pool dari tabel `TATA`, ditambah pencarian dan tts tahap 2). `stack deploy` merujuk
-image lewat digest, dan Swarm tidak menarik ulang image ber-digest yang sudah ada di server itu, jadi task
-yang dijadwal ulang tidak menunggu server 1. `DRY=1` mencetak rencana tanpa memanggil AWS dan memeriksa
+image lewat digest, dan menurut perilaku Docker (dibaca, belum diuji) Swarm tidak menarik ulang image
+ber-digest yang sudah ada di server itu, jadi task yang dijadwal ulang tidak menunggu server 1. `DRY=1` mencetak rencana tanpa memanggil AWS dan memeriksa
 bahwa setiap image registry di stack punya pool. Belum dijalankan di AWS. ECR tetap pilihan bila sandbox
 mengizinkan, tetapi itu belum terbukti.
 
