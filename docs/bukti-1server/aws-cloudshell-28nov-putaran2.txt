@@ -194,3 +194,15 @@ server menyala: 1
 bucket puisi*: 1
 Lambda: 1
 CloudFront: 1
+
+################ C. Cek cache CloudFront /fungsi (pertanyaan Ridlo: kenapa DevTools menulis Miss) ################
+===== curl dari laptop, URL yang sama tiga kali =====
+HTTP/1.1 200 OK Content-Type: image/jpeg Cache-Control: public, max-age=86400 X-Cache: Miss from cloudfront X-Amz-Cf-Pop: BCN50-P2
+HTTP/1.1 200 OK Content-Type: image/jpeg Cache-Control: public, max-age=86400 X-Cache: Hit from cloudfront X-Amz-Cf-Pop: BCN50-P2 Age: 2
+HTTP/1.1 200 OK Content-Type: image/jpeg Cache-Control: public, max-age=86400 X-Cache: Hit from cloudfront X-Amz-Cf-Pop: BCN50-P2 Age: 3
+===== Chrome, fetch() URL yang sama dari halaman aplikasi =====
+ke-1: X-Cache=Miss from cloudfront, Age=null, byte lewat jaringan=46321
+ke-2: X-Cache=Miss from cloudfront, Age=null, byte lewat jaringan=0      (dari cache browser; header milik ke-1)
+ke-3: X-Cache=Miss from cloudfront, Age=null, byte lewat jaringan=0      (dari cache browser; header milik ke-1)
+ke-4 (tanpa cache browser): X-Cache=Hit from cloudfront, Age=3
+Kesimpulan: cache CloudFront bekerja; "Miss" yang terlihat di DevTools adalah header lama yang diputar ulang dari cache browser.
