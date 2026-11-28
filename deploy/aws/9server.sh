@@ -367,7 +367,7 @@ ujiredis() {
 sql_di() {
   local no="$1" wadah="$2" sandi="$3" db="$4" b
   b="$(printf '%s' "$5" | base64 -w0)"
-  SSM_TUNGGU=40 ssm "$no" "echo $b | base64 -d | docker exec -i \$(docker ps -qf name=puisi_$wadah.) sh -c 'mysql -uroot -p\"$sandi\" -N -B $db 2>&1 | grep -v \"Using a password\"'"
+  SSM_TUNGGU=40 ssm "$no" "echo $b | base64 -d | docker exec -i \$(docker ps -qf name=puisi_$wadah.) sh -c 'mysql -uroot -p\"$sandi\" -N -B $db 2>&1 | grep -v \"Using a password\"; true'"
 }
 
 # primer <poem|auth|tts>: nomor server pemegang PRIMARY klaster itu (poem-db-N di s(3+N), auth/tts-db-N di s(6+N)).
