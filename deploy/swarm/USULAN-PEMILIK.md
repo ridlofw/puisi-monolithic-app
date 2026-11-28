@@ -21,7 +21,7 @@ bedanya dengan "dari membaca kode" juga ditandai.
 | Komponen | Pemilik | Sekarang di `stack.yaml` | Masih SPOF? | Yang masih butuh pemilik |
 |---|---|---|---|---|
 | gateway | Pison | satu per server **pool pison** (global), `/healthz` dan IP klien lewat berkas Swarm | Tidak, **bila** load balancer ada | adopsi `00-swarm.conf` ke `gateway/` (opsional) |
-| Redis | Pison | 1 salinan di server pool pison, dijadwal ulang | Ringan (cache; tidak ada henti layanan) | terima, atau Sentinel (perlu ubah kode) |
+| Redis | Pison | **Redis Sentinel**: 1 master, 2 replika, 3 Sentinel, dipaku slot 1..3 pool pison. **Diuji di Compose**: master dimatikan, replika dipromosikan sekitar 6 detik, 0 galat | **Tidak** (belum diuji lintas server) | tidak ada |
 | RabbitMQ | Pison | 3 node, dipaku, dnsrr | Tidak | perketat pembentukan klaster pertama |
 | `auth-db` | Ifham | **InnoDB Cluster 3 node + 2 Router (VIP `auth-db-router`)**, skrip umum. **Diuji di Compose**: klaster, tulis lewat Router, failover Primary kurang dari 1 detik | **Tidak** (belum diuji lintas server) | `services/auth/src/Db.php`: ulangi koneksi sekali saat failover (error 2006, 2013, 1290); pisahkan `/sehat` dan `/siap` |
 | `tts-db` | Ifham | **InnoDB Cluster 3 node + 2 Router** (pola sama, skema `job` dan `event_outbox` diterapkan di Primary). Pola diuji pada auth | **Tidak** (belum diuji) | worker sudah memakai lease, tidak ada perubahan wajib |
@@ -79,7 +79,14 @@ sebagai batasan, atau pindahkan pembatasan laju ke ALB/WAF (belum diverifikasi t
 
 ### 2. Redis
 
-**Yang dilakukan `stack.yaml`:** satu salinan, **tidak dipaku**. Bila servernya mati, Swarm menjalankannya
+**Pembaruan (revisi Hands On 3, S1):** usulan Redis Sentinel di bawah sudah dikerjakan. `stack.yaml` kini
+menjalankan `redis-1..3` dan `redis-sentinel-1..3` (skrip start bersama `redis/mulai.sh`), dan `Cache.php` di
+kedua layanan menemukan master lewat Sentinel lalu memeriksa `ROLE` (`src/MasterRedis.php`). Diuji di Compose
+(`scripts/uji_ketahanan.py --tahap redis-failover,redis-mati,redis-stres`), belum di AWS. Bukti dan angka:
+[`docs/AUDIT-SPOF-DAN-SKALABILITAS.md`](../../docs/AUDIT-SPOF-DAN-SKALABILITAS.md). Catatan lama di bawah dibiarkan
+sebagai riwayat keputusan.
+
+**Yang dilakukan `stack.yaml` (sebelum revisi):** satu salinan, **tidak dipaku**. Bila servernya mati, Swarm menjalankannya
 lagi di server lain dengan cache kosong. Selama itu aplikasi turun ke database (di satu server,
 skenario 4 `uji_anti_spof.py` LULUS). Ini **bukan** Redis HA.
 

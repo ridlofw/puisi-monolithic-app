@@ -19,7 +19,7 @@ bisa **ditambah dengan menambah servernya sendiri**.
 
 > **Status jujur (23 November 2026):** `stack.yaml` **dijalankan di AWS sandbox**: 9 server `t3.small` di 3 zona, 38 layanan penuh, `uji_e2e.py` 10 dari 10, dan satu server
 > pemegang PRIMARY database dimatikan tanpa probe gagal (saat itu 23 layanan). Rancangan **satu pool per microservice** berjalan sebagai label: di 9 server, tiap server membawa beberapa label pool.
-> Satu perbaikan lahir dari uji itu (healthcheck OpenSearch di `stack.yaml`). Komponen yang masih tunggal: `seaweedfs` (audio) dan `redis` (cache). Jangan menulis "bebas SPOF".
+> Satu perbaikan lahir dari uji itu (healthcheck OpenSearch di `stack.yaml`). Komponen yang masih tunggal: `seaweedfs` (audio). Redis kini Redis Sentinel (3 node, 3 Sentinel), diuji di Compose tetapi belum di AWS. Jangan menulis "bebas SPOF".
 > Angka, temuan, dan bukti: [`docs/LAPORAN-EKSPERIMEN-AWS.md`](../../docs/LAPORAN-EKSPERIMEN-AWS.md); cara mengulang: [`docs/PANDUAN-DEPLOY-AWS.md`](../../docs/PANDUAN-DEPLOY-AWS.md).
 
 ## Rancangan: satu kelompok server (pool) untuk setiap microservice
@@ -30,7 +30,7 @@ dan ditandai dengan **label** pada server.
 
 | Kunci pool | Pemilik | Isi | Server minimal |
 |---|---|---|---|
-| `infra` | Pison | gateway, **RabbitMQ 3 node**, Redis | **3** |
+| `infra` | Pison | gateway, **RabbitMQ 3 node**, **Redis Sentinel** (3 node + 3 Sentinel) | **3** |
 | `auto-tagging` | Pison | auto-tagging | **2** |
 | `puisi` | Ridlo | poem-service, relay, consumer, **poem-db (klaster 3 node)** + 2 router | **3** |
 | `genre` | Ridlo | klasifikasi-genre | **2** |

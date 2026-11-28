@@ -220,7 +220,7 @@ Bagian `environment:` pada setiap layanan di `stack.yaml` adalah "buku alamat" t
 | `DB_WRITE_HOSTS`, `DB_READ_HOSTS` | poem-service, relay, consumer ke poem-db | `poem-db-router-1:6446, ...` |
 | `DB_HOST`, `DB_PORT` | auth-service ke klaster auth-db lewat Router | `auth-db-router`, `6446` |
 | `DB_HOST`, `DB_PORT` | text-to-speech ke klaster tts-db lewat Router | `tts-db-router`, `6446` |
-| `REDIS_HOSTS` | layanan ke Redis | `redis:6379` |
+| `REDIS_HOSTS`, `REDIS_SENTINELS` | layanan ke Redis; master dicari lewat Sentinel lalu ROLE | `redis-1:6379, ...`, `redis-sentinel-1:26379, ...` |
 | `OPENSEARCH_URL` | search-service dan search-consumer ke OpenSearch | `http://opensearch:9200` |
 | `S3_ENDPOINT`, `S3_BUCKET` | text-to-speech ke SeaweedFS | `http://seaweedfs:8333`, `audio` |
 | `QUEUE` | antrean mana yang dibaca sebuah worker | `q.auto-tagging` |

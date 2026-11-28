@@ -176,8 +176,8 @@ Server tambahan di sebuah pool menambah salinan layanan, **bukan** anggota klast
 ketahanan data.
 
 Bintang (`*`) menandai komponen yang **masih hanya satu salinan** (SeaweedFS untuk audio). Bila server
-yang memegangnya mati, fitur audio berhenti. Redis (cache) juga satu salinan, tetapi hanya membuat
-aplikasi lebih lambat, bukan berhenti. Ini **bukan** kesalahan Anda; lihat
+yang memegangnya mati, fitur audio berhenti. Redis (cache) kini tiga node dengan Redis Sentinel: bila
+server master mati, replika dipromosikan dalam hitungan detik (diuji di Compose, belum di AWS). Ini **bukan** kesalahan Anda; lihat
 [`../USULAN-PEMILIK.md`](../USULAN-PEMILIK.md).
 
 ## 8. Apa yang dijamin dan tidak dijamin
@@ -187,7 +187,7 @@ aplikasi lebih lambat, bukan berhenti. Ini **bukan** kesalahan Anda; lihat
 | Berkas konfigurasi (`stack.yaml`) sintaksnya benar dan diterima Swarm | Sudah diperiksa |
 | Semua layanan benar-benar hidup dan saling terhubung di banyak server AWS | **Belum pernah dicoba.** Anda yang akan pertama menjalankannya |
 | Aplikasi tetap hidup saat satu server mati | **Belum diuji di AWS.** Klaster database (failover) dan klaster pencarian sudah diuji di Docker Compose satu mesin. Diperkirakan semuanya bertahan kecuali audio |
-| "Bebas SPOF" | **Tidak boleh diklaim.** Masih ada SeaweedFS (audio) dan Redis (cache), dan tiga server per klaster hanya menahan satu kegagalan |
+| "Bebas SPOF" | **Tidak boleh diklaim.** Masih ada SeaweedFS (audio), dan tiga server per klaster hanya menahan satu kegagalan |
 
 Karena belum pernah dijalankan di AWS, **kemungkinan Anda menemukan masalah yang belum kami
 ketahui**. Itu wajar. Catat apa yang terjadi, dan jangan menyembunyikan hasil yang tidak sesuai
