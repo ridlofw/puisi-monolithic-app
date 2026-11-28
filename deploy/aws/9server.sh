@@ -396,11 +396,14 @@ bersihkan() {
   echo "$A" | sed '/^$/d'
   uid="$(echo "$A" | awk '$1 ~ /^[0-9]+$/ {print $1}' | paste -sd, -)"
   if [ -z "$uid" ]; then echo "Tidak ada data uji. Selesai."; return 0; fi
-  echo "==== Puisi milik akun uji (poem-db) ===="
-  P="$(sql_di "$pno" "$pnama" "$pw" poem_db "select id, judul, penulis from puisi where user_id in ('${uid//,/\',\'}') order by id")"
-  echo "$P" | sed '/^$/d'
-  pid="$(echo "$P" | awk '$1 ~ /^[0-9]+$/ {print $1}' | paste -sd, -)"
-  n="$(echo "$P" | awk '$1 ~ /^[0-9]+$/' | wc -l)"
+  # Keluaran SSM dipotong AWS di sekitar 24 000 karakter (terjadi 28 Nov: 1 000+ puisi uji sesudah uji matikan server). Karena itu daftar
+  # puisi diringkas per judul, dan semua id diambil dalam SATU baris group_concat, lalu jumlahnya dicocokkan dengan count(*).
+  echo "==== Puisi milik akun uji (poem-db), diringkas per judul ===="
+  P="$(sql_di "$pno" "$pnama" "$pw" poem_db "select count(*), left(judul, 30), min(id), max(id) from puisi where user_id in ('${uid//,/\',\'}') group by left(judul, 30) order by min(id)")"
+  echo "$P" | sed '/^$/d' | awk -F'\t' '{printf "%s puisi \"%s\" (id %s sampai %s)\n", $1, $2, $3, $4}'
+  pid="$(sql_di "$pno" "$pnama" "$pw" poem_db "set session group_concat_max_len = 4000000; select group_concat(id order by id separator ',') from puisi where user_id in ('${uid//,/\',\'}')" | tr -d '[:space:]' | sed 's/NULL//')"
+  n="$(sql_di "$pno" "$pnama" "$pw" poem_db "select count(*) from puisi where user_id in ('${uid//,/\',\'}')" | tr -d '[:space:]')"
+  [ "$(echo "${pid:-}" | tr ',' '\n' | sed '/^$/d' | wc -l)" = "${n:-0}" ] || gagal "daftar id puisi tidak lengkap (${n:-?} puisi, id terbaca $(echo "$pid" | tr ',' '\n' | sed '/^$/d' | wc -l)); tidak ada yang dihapus"
   echo "Jumlah: $(echo "$uid" | tr ',' '\n' | wc -l) akun uji, $n puisi uji. Puisi lain tidak disentuh."
   if [ "${YA:-}" != "1" ]; then echo "Belum ada yang dihapus. Untuk menghapus: YA=1 bash 9server.sh bersihkan"; return 0; fi
 
@@ -413,23 +416,26 @@ from botocore.config import Config
 r=lambda p: open(p).read().strip()
 s=boto3.client('s3',endpoint_url='http://seaweedfs:8333',region_name='us-east-1',aws_access_key_id=r('/run/secrets/s3_access_key'),aws_secret_access_key=r('/run/secrets/s3_secret_key'),config=Config(s3={'addressing_style':'path'}))
 ids=[$pid]
-for i in ids: s.delete_object(Bucket='audio',Key='puisi_%d.mp3'%i)
-ada=[o['Key'] for o in s.list_objects_v2(Bucket='audio').get('Contents',[]) if o['Key'] in ['puisi_%d.mp3'%i for i in ids]]
-print('audio dihapus: %d, sisa: %d' % (len(ids), len(ada)))" | base64 -w0)"
+kunci=['puisi_%d.mp3'%i for i in ids]
+for a in range(0, len(kunci), 1000): s.delete_objects(Bucket='audio', Delete={'Objects':[{'Key':k} for k in kunci[a:a+1000]], 'Quiet':True})
+cari=set(kunci); ada=0
+for hal in s.get_paginator('list_objects_v2').paginate(Bucket='audio'): ada += sum(1 for o in hal.get('Contents',[]) if o['Key'] in cari)
+print('audio dihapus untuk %d puisi, sisa: %d' % (len(ids), ada))" | base64 -w0)"
     for n in 7 8 9; do
       SSM_TUNGGU=40 ssm "$n" "c=\$(docker ps -qf name=puisi_text-to-speech.); [ -n \"\$c\" ] && echo $py | base64 -d | docker exec -i \$c python - 2>&1 | tail -3 | sed 's/^/s$n: /'; true"
     done
-    echo "==== OpenSearch: dokumen indeks puisi ===="
-    ssm 1 "c=\$(docker ps -qf name=puisi_opensearch-1.); for i in ${pid//,/ }; do printf '%s=%s ' \$i \$(docker exec \$c curl -s -o /dev/null -w '%{http_code}' -XDELETE \"localhost:9200/puisi/_doc/\$i?refresh=true\"); done; echo '(200 dihapus, 404 memang tidak terindeks)'"
+    echo "==== OpenSearch: dokumen indeks puisi (satu delete_by_query) ===="
+    local q; q="$(printf '{"query":{"ids":{"values":[%s]}}}' "$(echo "$pid" | sed 's/[0-9][0-9]*/"&"/g')" | base64 -w0)"
+    ssm 1 "c=\$(docker ps -qf name=puisi_opensearch-1.); echo $q | base64 -d | docker exec -i \$c curl -s -XPOST -H 'Content-Type: application/json' --data-binary @- 'localhost:9200/puisi/_delete_by_query?refresh=true' | grep -oE '\"(total|deleted|failures)\":[^,]*' | tr '\n' ' '; echo '(deleted = yang terindeks; sisanya memang tidak pernah terindeks)'"
     echo "==== poem-db: puisi dan idempotensi ===="
     sql_di "$pno" "$pnama" "$pw" poem_db "delete from idempotensi where user_id in ('${uid//,/\',\'}'); delete from puisi where id in ($pid); select concat('sisa puisi uji: ', count(*)) from puisi where id in ($pid)"
   fi
   echo "==== auth-db: akun uji ===="
   sql_di "$ano" "$anama" "$aw" auth_db "delete from users where id in ($uid); select concat('sisa akun uji: ', count(*)) from users where id in ($uid)"
   echo "==== Redis: cache galeri dan pencarian dibuat basi ===="
-  local dels=""; for n in ${pid//,/ }; do dels="$dels puisi:detail:$n"; done
-  ssm 1 "s=\$(docker ps -qf name=puisi_redis-sentinel-1.); m=\$(docker exec \$s redis-cli -p 26379 SENTINEL get-master-addr-by-name puisi | head -1); echo \"master \$m: galeri versi \$(docker exec \$s redis-cli -h \$m INCR puisi:galeri:versi), cari versi \$(docker exec \$s redis-cli -h \$m INCR cari:versi)\"; ${dels:+docker exec \$s redis-cli -h \$m DEL$dels >/dev/null;} echo ok"
-  echo "Selesai. Gateway menyimpan GET /api/puisi 10 detik; galeri bersih paling lambat 10 detik lagi."
+  # Cache detail per puisi (puisi:detail:N) tidak dihapus satu per satu (bisa ribuan kunci); umurnya hanya 60 detik.
+  ssm 1 "s=\$(docker ps -qf name=puisi_redis-sentinel-1.); m=\$(docker exec \$s redis-cli -p 26379 SENTINEL get-master-addr-by-name puisi | head -1); echo \"master \$m: galeri versi \$(docker exec \$s redis-cli -h \$m INCR puisi:galeri:versi), cari versi \$(docker exec \$s redis-cli -h \$m INCR cari:versi)\""
+  echo "Selesai. Gateway menyimpan GET /api/puisi 10 detik dan detail puisi 60 detik di Redis; sesudah itu galeri bersih."
 }
 
 # ===== Uji matikan satu server (28 Nov 2026) =====
