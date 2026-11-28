@@ -198,7 +198,7 @@ swarm() {
     ssm 1 "docker node update $la $node >/dev/null && echo ok" | sed "s/^/s$no ($node) /"
   done <<< "$TATA"
   ssm 1 "docker node ls --format 'table {{.Hostname}}\t{{.Status}}\t{{.ManagerStatus}}'"
-  echo "Selesai. Langkah berikut: unggah kode.tgz ke CloudShell lalu: bash 9server.sh kode"
+  echo "Selesai. Langkah berikut: bash 9server.sh kode   (server 1 mengambil kode dari GitHub)"
 }
 
 # kode: tanpa argumen, server 1 mengambil kode LANGSUNG dari GitHub (git clone --depth 1), cabang yang sama dengan salinan di CloudShell

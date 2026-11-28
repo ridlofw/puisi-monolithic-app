@@ -1,0 +1,403 @@
+Deploy Scalable 9 server dari nol lewat GitHub, AWS Academy Sandbox, 28 November 2026 (jam UTC)
+Cabang ridlo/scalable-9server, commit 82c0dea. Cuplikan keluaran asli CloudShell (log ~/puisi9/log-*.txt),
+disalin dari layar terminal. Nomor akun dan email disaring; baris yang dipotong ditandai "...".
+
+##### 0. Sebelum mulai: versi Single dihapus (panduan Single bagian 7), lalu dicek
+distribusi dihapus
+[OK] kebijakan cache dihapus
+[OK] fungsi Lambda dihapus
+[OK] bucket dihapus
+server i-087ffe437d766fb6f dihentikan, menunggu terminated...
+server terminated
+Security Group dihapus
+HAPUS-SINGLE-SELESAI
+instance us-east-1: 0
+instance us-west-2: 0
+cloudfront: 0
+lambda: 0
+bucket puisi: 0
+alb: 0
+
+##### Langkah 1: git clone di CloudShell
+82c0dea feat(deploy): 9 server dari GitHub dengan satu CloudFront dan uji Redis Sentinel
+
+##### Langkah 1-2: luncurkan, swarm (log-a)
+Sat Nov 28 12:47:04 PM UTC 2026
+==== 1. Jaringan dan AMI ====
+Security Group dibuat (semua lalu lintas hanya dari grup itu sendiri)
+AMI Amazon Linux 2023: ami-000d209a4fc9822c4 tipe: t3.small
+==== 2. Meluncurkan 9 server ====
+puisi-s1 dibuat di zona us-east-1a (i-0e1d2ae6a50bcd880)
+...
+puisi-s9 dibuat di zona us-east-1c (i-07432a87ff1fe2868)
+==== 3. Menunggu semua Running ====
+puisi-s1 us-east-1a 172.31.20.141
+puisi-s2 us-east-1b 172.31.40.27
+puisi-s3 us-east-1c 172.31.3.180
+puisi-s4 us-east-1a 172.31.31.240
+puisi-s5 us-east-1b 172.31.47.106
+puisi-s6 us-east-1c 172.31.13.149
+puisi-s7 us-east-1a 172.31.17.183
+puisi-s8 us-east-1b 172.31.42.173
+puisi-s9 us-east-1c 172.31.0.10
+Sat Nov 28 12:48:09 PM UTC 2026
+==== 1. Menunggu 9 server terdaftar di SSM (maks 10 menit) ====
+server online di SSM: 9
+==== 2. Menunggu Docker siap di tiap server ====
+s1: Docker version 25.0.14, build 0bab007, git version 2.50.1
+... (s2 sampai s9 sama)
+==== 3. Membentuk Swarm ====
+swarm: active
+s2 (manager): This node joined a swarm as a manager.
+s3 (manager): This node joined a swarm as a manager.
+s4 (worker): This node joined a swarm as a worker.
+... (s5 sampai s9 worker)
+==== 4. Label ====
+s1 (ip-172-31-20-141.ec2.internal) ok
+... (s2 sampai s9 ok)
+HOSTNAME STATUS MANAGER STATUS
+ip-172-31-0-10.ec2.internal Ready
+ip-172-31-3-180.ec2.internal Ready Reachable
+ip-172-31-13-149.ec2.internal Ready
+ip-172-31-17-183.ec2.internal Ready
+ip-172-31-20-141.ec2.internal Ready Leader
+ip-172-31-31-240.ec2.internal Ready
+ip-172-31-40-27.ec2.internal Ready Reachable
+ip-172-31-42-173.ec2.internal Ready
+ip-172-31-47-106.ec2.internal Ready
+Sat Nov 28 12:51:42 PM UTC 2026
+
+##### Langkah 3, 4, 9: kode (git clone di server 1), image, gambar (log-b)
+Sat Nov 28 12:52:11 PM UTC 2026
+cabang: ridlo/scalable-9server commit di CloudShell: 82c0dea feat(deploy): 9 server dari GitHub dengan satu CloudFront dan uji Redis Sentinel
+commit di server 1: 82c0dea feat(deploy): 9 server dari GitHub dengan satu CloudFront dan uji Redis Sentinel
+Sat Nov 28 12:52:18 PM UTC 2026
+==== Registry (Jalur B) ====
+Creating network registri_default
+Creating service registri_registry
+registry-siap
+==== Membangun 6 image di server 1 (latar belakang) ====
+tag image: v4
+mulai
+Sat Nov 28 12:52:33 PM UTC 2026
+================ siapkan-gambar 2026-11-28T12:52:33Z ================
+==== 1/5 Bucket S3 ====
+bucket puisi-gambar-870354-32513 dibuat
+[OK] akses publik, bucket policy baca-publik, dan static website hosting terpasang
+==== 2/5 Fungsi Lambda (puisi-gambar) ====
+...
+TANPA_CLOUDFRONT=1: distribusi CloudFront gambar TIDAK dibuat (dibuat sekali saja oleh cloudfront-dua-jalur.sh).
+================ RINGKASAN ================
+bucket : puisi-gambar-870354-32513
+fungsi : puisi-gambar
+uji Lambda langsung: lulus (langkah 4/5)
+Sat Nov 28 12:53:20 PM UTC 2026
+
+bash 9server.sh status:
+[12:52:26] bangun puisi-gateway
+[12:52:33] OK puisi-gateway
+[12:52:33] bangun puisi-poem
+[12:54:14] OK puisi-poem
+[12:54:14] bangun puisi-auth
+[12:54:53] OK puisi-auth
+[12:54:53] bangun puisi-auto-tagging
+[12:55:00] OK puisi-auto-tagging
+[12:55:00] bangun puisi-klasifikasi-genre
+[12:55:06] OK puisi-klasifikasi-genre
+[12:55:06] bangun puisi-analisis-emosi
+[12:55:10] OK puisi-analisis-emosi
+[12:55:10] SELESAI
+
+##### Langkah 5, 6, 11, 8: deploy, hitung, rabbit, image2, alb (log-c)
+Sat Nov 28 12:55:54 PM UTC 2026
+==== Rahasia ====
+jumlah berkas rahasia: 10
+==== docker stack deploy ====
+tag image: v4
+... Creating service puisi_redis-1 ...
+==== TAHAP 1: membuang pencarian dan text-to-speech (dipasang lagi di tahap 2: image2, stack2, pasang) ====
+dibuang
+Sat Nov 28 12:56:20 PM UTC 2026
+(tunggu 200 detik)
+29 layanan penuh, 0 belum; total 29
+6 Ready
+1 Ready Leader
+2 Ready Reachable
+Sat Nov 28 12:59:44 PM UTC 2026
+==== RabbitMQ: gabungkan node 2 dan 3 ke node 1, lalu tambah replika antrean quorum ====
+Resetting node rabbit@rabbitmq-2 ...
+Clustering node rabbit@rabbitmq-2 with rabbit@rabbitmq-1
+Starting node rabbit@rabbitmq-2 ...
+Resetting node rabbit@rabbitmq-3 ...
+Clustering node rabbit@rabbitmq-3 with rabbit@rabbitmq-1
+Starting node rabbit@rabbitmq-3 ...
+/ q.analisis-emosi.dlq 2 ok
+rabbit@rabbitmq-1
+rabbit@rabbitmq-2
+rabbit@rabbitmq-3
+13 dari 13 antrean quorum beranggota 3 node
+Sat Nov 28 01:00:56 PM UTC 2026
+==== Membangun image pencarian dan tts di server 1 (latar belakang) ====
+tag image: v4
+mulai
+Sat Nov 28 01:01:03 PM UTC 2026
+Security Group ALB dibuat (80 dari internet); server menerima 80 dari ALB
+target group dibuat
+server 1, 2, 3 didaftarkan sebagai target
+ALB dibuat
+DNS ALB: puisi-alb-842599329.us-east-1.elb.amazonaws.com
+Sat Nov 28 01:01:18 PM UTC 2026
+
+##### Langkah 7: verifikasi tahap 1 (log-d)
+Sat Nov 28 01:01:31 PM UTC 2026
+==== poem-db (server 4): harus 3 baris ONLINE ====
+poem-db-3 ONLINE SECONDARY
+poem-db-2 ONLINE SECONDARY
+poem-db-1 ONLINE PRIMARY
+==== auth-db (server 7): harus 3 baris ONLINE ====
+auth-db-3 ONLINE SECONDARY
+auth-db-1 ONLINE PRIMARY
+auth-db-2 ONLINE SECONDARY
+==== RabbitMQ: harus 3 node, semua antrean quorum beranggota 3 node ====
+rabbit@rabbitmq-1
+rabbit@rabbitmq-2
+rabbit@rabbitmq-3
+13 dari 13 antrean quorum beranggota 3 node
+==== Redis Sentinel: 1 master + 2 replika, ketiga Sentinel sepakat, tilt 0 ====
+redis-1: role:master connected_slaves:2
+redis-2: role:slave master_host:redis-1 master_link_status:up connected_slaves:0
+redis-3: role:slave master_host:redis-1 master_link_status:up connected_slaves:0
+redis-sentinel-1: master=redis-1 sentinel_tilt:0
+redis-sentinel-2: master=redis-1 sentinel_tilt:0
+redis-sentinel-3: master=redis-1 sentinel_tilt:0
+puisi:galeri:versi di master redis-1 =
+REDIS OK: 1 master (redis-1), 2 replika tersambung, 3 Sentinel sepakat, tilt 0
+==== gateway ====
+healthz=200 {"status":"sukses","pesan":"Layanan puisi sehat."}
+==== uji_e2e.py (8 dari 10 LULUS setelah tahap 1; 10 dari 10 setelah tahap 2) ====
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/1 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, ...
+audio BELUM url_audio belum ada
+pencarian BELUM GET /api/search?q=pinang -> 502, 0 hasil, ditemukan di halaman 1
+-- 8 dari 10 tahap LULUS
+Sat Nov 28 01:04:41 PM UTC 2026
+i-057996b86f21c521b healthy None
+i-0e1d2ae6a50bcd880 healthy None
+i-0df966cd82a685a9a healthy None
+status ALB: active
+[13:00:57] bangun puisi-pencarian
+[13:02:22] OK puisi-pencarian
+[13:02:22] bangun puisi-tts
+[13:04:07] OK puisi-tts
+[13:04:07] SELESAI
+
+##### Temuan: redis-sentinel-1 masuk TILT saat image TTS dibangun di server 1 (docker service ps dan docker service logs)
+puisi_redis-1.1 ip-172-31-20-141.ec2.internal Running Running 11 minutes ago
+puisi_redis-2.1 ip-172-31-40-27.ec2.internal Running Running 12 minutes ago
+puisi_redis-3.1 ip-172-31-3-180.ec2.internal Running Running 12 minutes ago
+puisi_redis-sentinel-1.1 ip-172-31-20-141.ec2.internal Running Running 4 minutes ago
+puisi_redis-sentinel-1.1 ip-172-31-20-141.ec2.internal Shutdown Complete 4 minutes ago
+puisi_redis-sentinel-2.1 ip-172-31-40-27.ec2.internal Running Running 11 minutes ago
+puisi_redis-sentinel-3.1 ip-172-31-3-180.ec2.internal Running Running 11 minutes ago
+2026-11-28T12:56:27Z ... # Failed to resolve hostname 'redis-sentinel-2'      (berulang sampai 12:56:35)
+2026-11-28T12:56:35Z ... * +slave slave redis-2:6379 redis-2 6379 @ puisi redis-1 6379
+2026-11-28T12:56:36Z ... # -sdown sentinel ... redis-sentinel-2 26379 @ puisi redis-1
+2026-11-28T13:03:29Z ... # +tilt #tilt mode entered
+2026-11-28T13:03:31Z ... # +tilt #tilt mode entered
+2026-11-28T13:03:53Z ... # +tilt #tilt mode entered
+2026-11-28T13:04:00Z ... Received SIGTERM scheduling shutdown...
+2026-11-28T13:04:00Z ... # Sentinel is now ready to exit, bye bye...
+2026-11-28T13:04:12Z ... * Sentinel new configuration saved on disk           (task baru)
+exit=0 oom=false fin=2026-11-28T13:04:00.185106191Z
+
+##### Langkah 10, 12, 13, 14, 15: gateway, stack2, pasang, hitung (log-e)
+/opt/puisi/deploy/swarm/gateway/01-cloudfront.conf: 217 IPv4 + 35 IPv6
+localhost:5000/puisi-gateway:v4-gw
+puisi_gateway
+Sat Nov 28 01:06:06 PM UTC 2026
+tag image: v4, gateway: v4-gw
+298: image: localhost:5000/puisi-gateway:v4-gw
+layanan sebelum: 29
+==== docker stack deploy (stack.yaml + override) ====
+... Creating service puisi_search-consumer / search-service / opensearch-2 / opensearch-replika / tts-db-1..3 / tts-db-router ...
+==== task layanan lama yang baru dimulai dalam 5 menit terakhir (harus kosong) ====
+puisi_gateway.rn8l4c7mo5t07vox6itkysoeb Running 16 seconds ago
+puisi_gateway.udsb69anq56nqkm8na5n6huke Running about a minute ago
+puisi_gateway.wwbtbsp6l584q3pfcr2n0csqb Running 31 seconds ago
+puisi_redis-sentinel-1.1 Running 2 minutes ago
+selesai-periksa
+Sat Nov 28 01:07:26 PM UTC 2026
+==== vm.max_map_count = 262144 di server 1 sampai 3 (wajib bagi OpenSearch; bawaan 65530) ====
+s1: 262144
+s2: 262144
+s3: 262144
+s1 ... label pencarian: ok   (s2, s3 ok)
+Sat Nov 28 01:08:01 PM UTC 2026
+s7 ... label tts: ok   (s8, s9 ok)
+s7 ... label audio: ok
+Sat Nov 28 01:08:36 PM UTC 2026
+(tunggu 180 detik)
+44 layanan penuh, 0 belum; total 44
+6 Ready
+1 Ready Leader
+2 Ready Reachable
+Sat Nov 28 01:11:40 PM UTC 2026
+
+##### Langkah 15b, 16, 17, 18a, 18b: rabbit, verifikasi, cloudfront, e2e lewat ALB dan HTTPS (log-f)
+Sat Nov 28 01:12:20 PM UTC 2026
+rabbitmq-2 sudah anggota klaster: dilewati
+rabbitmq-3 sudah anggota klaster: dilewati
+13 dari 13 antrean quorum beranggota 3 node
+Sat Nov 28 01:12:50 PM UTC 2026
+(poem-db 3 ONLINE, auth-db 3 ONLINE, RabbitMQ 3 node, sama seperti di atas)
+REDIS OK: 1 master (redis-1), 2 replika tersambung, 3 Sentinel sepakat, tilt 0
+puisi:galeri:versi di master redis-1 = 5
+healthz=200 {"status":"sukses","pesan":"Layanan puisi sehat."}
+==== uji_e2e.py (dari dalam server 1) ====
+audio LULUS GET /audio/puisi_2.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 1 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+Sat Nov 28 01:13:45 PM UTC 2026
+asal S3 website : puisi-gambar-870354-32513.s3-website-us-east-1.amazonaws.com
+asal ALB : puisi-alb-842599329.us-east-1.elb.amazonaws.com
+distribusi EG0CVERGXQR85 dibuat (d3q7fw4h7tssnf.cloudfront.net)
+[OK] web/ diunggah ke s3://puisi-gambar-870354-32513/ (alamat di api.js: https://d3q7fw4h7tssnf.cloudfront.net)
+menunggu CloudFront selesai (3 sampai 15 menit; jangan ditutup)...
+...
+[OK] 200 <- https://d3q7fw4h7tssnf.cloudfront.net/js/api.js
+[OK] 200 <- https://d3q7fw4h7tssnf.cloudfront.net/style.css
+[OK] 200 <- https://d3q7fw4h7tssnf.cloudfront.net/latar1.jpeg
+[OK] 200 <- https://d3q7fw4h7tssnf.cloudfront.net/fungsi?action=preview&template=latar1.jpeg&judul=Uji&penulis=Skrip&kutipan=halo
+[OK] 200 <- https://d3q7fw4h7tssnf.cloudfront.net/api/puisi/sehat
+[OK] 401 <- https://d3q7fw4h7tssnf.cloudfront.net/api/auth/login
+[OK] 301 <- http://d3q7fw4h7tssnf.cloudfront.net/
+uji lulus: 8 dari 8
+ALAMAT APLIKASI (HTTPS): https://d3q7fw4h7tssnf.cloudfront.net/
+Sat Nov 28 01:16:59 PM UTC 2026
+== e2e lewat ALB (HTTP, dari CloudShell)
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/3 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, ...
+audio LULUS GET /audio/puisi_3.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 2 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+Sat Nov 28 01:17:14 PM UTC 2026
+== e2e lewat HTTPS CloudFront
+gateway LULUS GET / -> 200
+register LULUS POST /api/auth/register -> 201
+login LULUS POST /api/auth/login -> 200
+submit LULUS POST /api/puisi -> 202
+detail LULUS GET /api/puisi/4 -> 200
+tag LULUS {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+genre LULUS {"genre": "pantun", "skema_rima": "abab"}
+emosi LULUS {"sentimen": {"skor": 0.4, "label": "positif"}, ...
+audio LULUS GET /audio/puisi_4.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 3 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+Sat Nov 28 01:17:27 PM UTC 2026
+
+##### Langkah 19, 20, 21: memori, ujiredis, redis, verifikasi, ujibaru, hitung, memori (log-g)
+Sat Nov 28 01:18:26 PM UTC 2026
+s1: terpakai 1202 tersedia 520 dari 1909 MB; swap 106 MB; load: 1.33, 0.95, 0.86
+s2: terpakai 1212 tersedia 506 dari 1909 MB; swap 36 MB; load: 0.25, 0.44, 0.43
+s3: terpakai 1186 tersedia 531 dari 1909 MB; swap 49 MB; load: 0.44, 0.59, 0.49
+s4: terpakai 1089 tersedia 637 dari 1909 MB; swap 3 MB; load: 0.39, 0.32, 0.27
+s5: terpakai 1127 tersedia 593 dari 1909 MB; swap 1 MB; load: 0.07, 0.08, 0.10
+s6: terpakai 1090 tersedia 627 dari 1909 MB; swap 0 MB; load: 0.21, 0.14, 0.16
+s7: terpakai 1316 tersedia 429 dari 1909 MB; swap 575 MB; load: 0.33, 0.50, 0.36
+s8: terpakai 1529 tersedia 231 dari 1909 MB; swap 79 MB; load: 0.56, 0.32, 0.23
+s9: terpakai 1444 tersedia 318 dari 1909 MB; swap 150 MB; load: 0.30, 0.36, 0.27
+Sat Nov 28 01:19:12 PM UTC 2026
+13:19:13 master awal menurut redis-sentinel-1: redis-1
+13:19:16 docker service scale puisi_redis-1=0
+13:19:24 master baru menurut redis-sentinel-1: redis-3 (8 detik sesudah scale 0)
+redis-sentinel-1: master=redis-3 sentinel_tilt:0
+redis-sentinel-2: master=redis-3 sentinel_tilt:0
+redis-sentinel-3: master=redis-3 sentinel_tilt:0
+peran redis-3: master
+13:19:30 docker service scale puisi_redis-1=1 (node lama harus kembali sebagai REPLIKA)
+13:19:43 peran redis-1 sekarang: slave
+redis-1: role:slave master_host:redis-3 master_link_status:up connected_slaves:0
+redis-2: role:slave master_host:redis-3 master_link_status:up connected_slaves:0
+redis-3: role:master connected_slaves:2
+mulai.sh: redis-1 menjadi replika dari redis-3
+probe GET /api/puisi sekali per detik: 118, bukan 200: 0
+---- log Sentinel (sdown, odown, switch-master, tilt) ----
+1:X 28 Nov 2026 13:19:23.236 # +sdown master puisi redis-1 6379
+1:X 28 Nov 2026 13:19:23.299 # +odown master puisi redis-1 6379 #quorum 2/2
+1:X 28 Nov 2026 13:19:25.392 # +switch-master puisi redis-1 6379 redis-3 6379
+1:X 28 Nov 2026 13:19:28.415 # +sdown slave redis-1:6379 redis-1 6379 @ puisi redis-3 6379
+1:X 28 Nov 2026 13:19:42.150 # -sdown slave redis-1:6379 redis-1 6379 @ puisi redis-3 6379
+Sat Nov 28 01:21:18 PM UTC 2026
+redis-sentinel-1: master=redis-3 sentinel_tilt:0
+redis-sentinel-2: master=redis-3 sentinel_tilt:0
+redis-sentinel-3: master=redis-3 sentinel_tilt:0
+puisi:galeri:versi di master redis-3 = 23
+REDIS OK: 1 master (redis-3), 2 replika tersambung, 3 Sentinel sepakat, tilt 0
+Sat Nov 28 01:21:25 PM UTC 2026
+(verifikasi sesudah failover: poem-db 3 ONLINE, auth-db 3 ONLINE, RabbitMQ 3 node, 13 dari 13 antrean quorum)
+audio LULUS GET /audio/puisi_5.mp3 -> 200
+pencarian LULUS GET /api/search?q=pinang -> 200, 4 hasil, ditemukan di halaman 1
+-- 10 dari 10 tahap LULUS
+Sat Nov 28 01:22:17 PM UTC 2026
+redis-3: role:master connected_slaves:2
+puisi:galeri:versi di master redis-3 = 28
+REDIS OK: 1 master (redis-3), 2 replika tersambung, 3 Sentinel sepakat, tilt 0
+Sat Nov 28 01:22:24 PM UTC 2026
+==== poem-db (server 4): harus 3 baris ONLINE ====
+poem-db-3 ONLINE SECONDARY
+poem-db-2 ONLINE SECONDARY
+poem-db-1 ONLINE PRIMARY
+==== tabel idempotensi di tiap node poem-db (harus 1 di ketiganya) ====
+poem-db-1: 0
+poem-db-2: 0
+poem-db-3: 0
+   (lihat pemeriksaan ulang di bawah: tabelnya ada di ketiga node)
+==== Idempotency-Key dan throttle 429 (di server 1, lewat gateway lokal) ====
+kiriman pertama LULUS 202 diharapkan; kode=202 id=6
+kiriman ulang sama LULUS id sama dan Idempotent-Replay: true diharapkan; kode=202 id=6 replay=true
+kunci sama isi beda LULUS 409 diharapkan; kode=409
+tanpa kunci (kontrol) LULUS puisi baru (id berbeda) diharapkan; kode=202 id=7
+kunci tidak valid LULUS 400 diharapkan (kurang dari 8 karakter); kode=400
+GET galeri tanpa 429 LULUS 120 GET -> {"200": 120}
+POST dibatasi (429) LULUS 300 POST cepat -> {"401": 29, "429": 271}
+429 berbentuk JSON LULUS badan status=error dan Retry-After: 1 diharapkan
+selebihnya diteruskan LULUS ... {"401": 29, "429": 271}
+-- 9 dari 9 pemeriksaan LULUS
+worker suara ada di server 7
+puisi_text-to-speech.1... memori 315.4MiB / 1.865GiB
+tersedia 414 MB dari 1909 MB; swap 588 MB
+{"waktu": "2026-11-28T13:10:03.981+00:00", "level": "INFO", "worker": "text-to-speech", "pesan": "voice model loaded before the first job", "warm_up_seconds": 3.489, "load_seconds": 3.205}
+Sat Nov 28 01:23:08 PM UTC 2026
+44 layanan penuh, 0 belum; total 44
+6 Ready
+1 Ready Leader
+2 Ready Reachable
+s1: terpakai 1198 tersedia 524 dari 1909 MB; swap 106 MB; load: 0.41, 0.73, 0.79
+s2: terpakai 1254 tersedia 457 dari 1909 MB; swap 43 MB; load: 0.34, 0.41, 0.43
+s3: terpakai 1202 tersedia 515 dari 1909 MB; swap 48 MB; load: 0.18, 0.44, 0.45
+s4: terpakai 1106 tersedia 621 dari 1909 MB; swap 3 MB; load: 0.45, 0.33, 0.28
+s5: terpakai 1133 tersedia 589 dari 1909 MB; swap 1 MB; load: 0.14, 0.11, 0.09
+s6: terpakai 1106 tersedia 610 dari 1909 MB; swap 0 MB; load: 0.02, 0.08, 0.13
+s7: terpakai 1329 tersedia 417 dari 1909 MB; swap 588 MB; load: 0.72, 0.54, 0.40
+s8: terpakai 1548 tersedia 212 dari 1909 MB; swap 79 MB; load: 0.21, 0.26, 0.22
+s9: terpakai 1460 tersedia 302 dari 1909 MB; swap 144 MB; load: 0.11, 0.24, 0.24
+Sat Nov 28 01:23:59 PM UTC 2026
+
+##### Pemeriksaan ulang tabel idempotensi (sesudah ujibaru)
+show tables from poem_db (poem-db-1): idempotensi, outbox, puisi
+poem-db-1 (s4): idempotensi$
+poem-db-2 (s5): idempotensi$
+poem-db-3 (s6): idempotensi$
+baris persis dari ujibaru dijalankan ulang untuk poem-db-1: poem-db-1: 1
