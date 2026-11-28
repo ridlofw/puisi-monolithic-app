@@ -18,6 +18,7 @@
 #   bash 9server.sh redis       # Redis Sentinel: peran tiap node, master menurut tiap Sentinel, TILT
 #   bash 9server.sh ujiredis    # uji failover Redis: master di-scale ke 0, Sentinel memilih master baru, node lama kembali sebagai replika
 #   bash 9server.sh ujibaru     # tabel idempotensi, Idempotency-Key, throttle 429, memori TTS (untuk kode Bab 10 dan 11 Pison)
+#   bash 9server.sh bersihkan   # tampilkan akun dan puisi buatan skrip uji; YA=1 bash 9server.sh bersihkan menghapusnya di semua tempat
 #   bash 9server.sh cek         # node, layanan, memori tiap server
 #   (jalankan 'image' TANPA "| tail": tail menahan keluaran sampai perintah selesai; registry bisa 4 menit menarik image pertama)
 #   bash 9server.sh status      # log pembangunan image
@@ -353,6 +354,83 @@ ujiredis() {
   SSM_TUNGGU=120 ssm 1 "cd /opt/puisi && bash deploy/aws/uji-redis-sentinel.sh"
 }
 
+# ===== Pembersih data uji (28 Nov 2026) =====
+# Data uji = akun buatan skrip uji SAJA: scripts/uji_e2e.py (username e2e + 8 heksa, nama "Penyair E2E") dan deploy/aws/uji-ketahanan-baru.py
+# (username uji + 8 heksa, nama "Penguji Ketahanan"), beserta semua puisi akun itu. Akun dan puisi buatan manusia tidak tersentuh: keduanya
+# syarat (pola username DAN nama) harus cocok. Satu puisi tersimpan di beberapa tempat, semuanya dibersihkan:
+#   poem-db (puisi, idempotensi), tts-db (job), SeaweedFS (audio/puisi_N.mp3), OpenSearch (indeks puisi), auth-db (users),
+#   Redis (versi cache galeri dan pencarian dinaikkan, detail puisi dihapus). Baris outbox yang sudah terkirim dibiarkan (tidak tampil di mana pun).
+# Tanpa YA=1 hanya MENAMPILKAN daftar. Jalankan sesudah uji selesai (puisi tidak lagi "diproses"), bukan saat uji berjalan.
+
+# sql_di <no-server> <container> <sandi> <db> <sql>: SQL dikirim lewat base64 dan stdin, supaya tanda kutip tidak rusak di perjalanan SSM.
+# <sandi> ditulis literal, mis. 'poem' atau '$(cat /run/secrets/auth_db_root_password)' (dievaluasi di dalam container).
+sql_di() {
+  local no="$1" wadah="$2" sandi="$3" db="$4" b
+  b="$(printf '%s' "$5" | base64 -w0)"
+  SSM_TUNGGU=40 ssm "$no" "echo $b | base64 -d | docker exec -i \$(docker ps -qf name=puisi_$wadah.) sh -c 'mysql -uroot -p\"$sandi\" -N -B $db 2>&1 | grep -v \"Using a password\"'"
+}
+
+# primer <poem|auth|tts>: nomor server pemegang PRIMARY klaster itu (poem-db-N di s(3+N), auth/tts-db-N di s(6+N)).
+primer() {
+  local kl="$1" dasar sandi h
+  case "$kl" in
+    poem) dasar=4; sandi='poem' ;;
+    auth) dasar=7; sandi='$(cat /run/secrets/auth_db_root_password)' ;;
+    tts)  dasar=7; sandi='$(cat /run/secrets/tts_db_root_password)' ;;
+  esac
+  h="$(sql_di "$dasar" "$kl-db-1" "$sandi" mysql "select member_host from performance_schema.replication_group_members where member_role='PRIMARY'" | grep -oE "$kl-db-[123]" | head -1)"
+  [ -n "$h" ] || return 1
+  echo $(( dasar + ${h##*-} - 1 )) "$h" "$sandi"
+}
+
+bersihkan() {
+  local P A T pno pw pnama ano aw anama tno tw tnama uid pid n
+  read -r pno pnama pw <<< "$(primer poem)" || true
+  read -r ano anama aw <<< "$(primer auth)" || true
+  read -r tno tnama tw <<< "$(primer tts)" || true
+  [ -n "$pno" ] && [ -n "$ano" ] && [ -n "$tno" ] || gagal "PRIMARY tidak terbaca (poem=$pnama auth=$anama tts=$tnama); jalankan verifikasi dulu"
+  echo "PRIMARY: $pnama (s$pno), $anama (s$ano), $tnama (s$tno)"
+  echo "==== Akun uji (auth-db) ===="
+  A="$(sql_di "$ano" "$anama" "$aw" auth_db "select id, username, nama from users where username regexp '^(e2e|uji)[0-9a-f]{8}\$' and nama in ('Penyair E2E','Penguji Ketahanan') order by id")"
+  echo "$A" | sed '/^$/d'
+  uid="$(echo "$A" | awk '$1 ~ /^[0-9]+$/ {print $1}' | paste -sd, -)"
+  if [ -z "$uid" ]; then echo "Tidak ada data uji. Selesai."; return 0; fi
+  echo "==== Puisi milik akun uji (poem-db) ===="
+  P="$(sql_di "$pno" "$pnama" "$pw" poem_db "select id, judul, penulis from puisi where user_id in ('${uid//,/\',\'}') order by id")"
+  echo "$P" | sed '/^$/d'
+  pid="$(echo "$P" | awk '$1 ~ /^[0-9]+$/ {print $1}' | paste -sd, -)"
+  n="$(echo "$P" | awk '$1 ~ /^[0-9]+$/' | wc -l)"
+  echo "Jumlah: $(echo "$uid" | tr ',' '\n' | wc -l) akun uji, $n puisi uji. Puisi lain tidak disentuh."
+  if [ "${YA:-}" != "1" ]; then echo "Belum ada yang dihapus. Untuk menghapus: YA=1 bash 9server.sh bersihkan"; return 0; fi
+
+  if [ -n "$pid" ]; then
+    echo "==== tts-db: job suara ===="
+    sql_di "$tno" "$tnama" "$tw" tts "delete from job where puisi_id in ($pid); select concat('sisa job: ', count(*)) from job where puisi_id in ($pid)"
+    echo "==== SeaweedFS: berkas audio ===="
+    local py; py="$(printf '%s' "import boto3
+from botocore.config import Config
+r=lambda p: open(p).read().strip()
+s=boto3.client('s3',endpoint_url='http://seaweedfs:8333',region_name='us-east-1',aws_access_key_id=r('/run/secrets/s3_access_key'),aws_secret_access_key=r('/run/secrets/s3_secret_key'),config=Config(s3={'addressing_style':'path'}))
+ids=[$pid]
+for i in ids: s.delete_object(Bucket='audio',Key='puisi_%d.mp3'%i)
+ada=[o['Key'] for o in s.list_objects_v2(Bucket='audio').get('Contents',[]) if o['Key'] in ['puisi_%d.mp3'%i for i in ids]]
+print('audio dihapus: %d, sisa: %d' % (len(ids), len(ada)))" | base64 -w0)"
+    for n in 7 8 9; do
+      SSM_TUNGGU=40 ssm "$n" "c=\$(docker ps -qf name=puisi_text-to-speech.); [ -n \"\$c\" ] && echo $py | base64 -d | docker exec -i \$c python - 2>&1 | tail -3 | sed 's/^/s$n: /'; true"
+    done
+    echo "==== OpenSearch: dokumen indeks puisi ===="
+    ssm 1 "c=\$(docker ps -qf name=puisi_opensearch-1.); for i in ${pid//,/ }; do printf '%s=%s ' \$i \$(docker exec \$c curl -s -o /dev/null -w '%{http_code}' -XDELETE \"localhost:9200/puisi/_doc/\$i?refresh=true\"); done; echo '(200 dihapus, 404 memang tidak terindeks)'"
+    echo "==== poem-db: puisi dan idempotensi ===="
+    sql_di "$pno" "$pnama" "$pw" poem_db "delete from idempotensi where user_id in ('${uid//,/\',\'}'); delete from puisi where id in ($pid); select concat('sisa puisi uji: ', count(*)) from puisi where id in ($pid)"
+  fi
+  echo "==== auth-db: akun uji ===="
+  sql_di "$ano" "$anama" "$aw" auth_db "delete from users where id in ($uid); select concat('sisa akun uji: ', count(*)) from users where id in ($uid)"
+  echo "==== Redis: cache galeri dan pencarian dibuat basi ===="
+  local dels=""; for n in ${pid//,/ }; do dels="$dels puisi:detail:$n"; done
+  ssm 1 "s=\$(docker ps -qf name=puisi_redis-sentinel-1.); m=\$(docker exec \$s redis-cli -p 26379 SENTINEL get-master-addr-by-name puisi | head -1); echo \"master \$m: galeri versi \$(docker exec \$s redis-cli -h \$m INCR puisi:galeri:versi), cari versi \$(docker exec \$s redis-cli -h \$m INCR cari:versi)\"; ${dels:+docker exec \$s redis-cli -h \$m DEL$dels >/dev/null;} echo ok"
+  echo "Selesai. Gateway menyimpan GET /api/puisi 10 detik; galeri bersih paling lambat 10 detik lagi."
+}
+
 # Pemeriksaan khusus kode Bab 10 dan 11 (Pison). Jalankan SESUDAH tahap 2 dan `verifikasi` (e2e 10 dari 10 lebih dulu). Dijalankan di AWS 23 Nov 2026 (tabel idempotensi 3/3, uji kunci dan throttle 9 dari 9 lulus, memori TTS terbaca).
 #  1) poem-db 3 ONLINE dan tabel `idempotensi` ada di ketiga node. poem-relay membuatnya saat start lewat primary (tereplikasi). Bila relay menyala
 #     sebelum klaster terbentuk, tabel bisa mendarat di node mentah; init-cluster.sh lalu jatuh dari `incremental` ke `clone` (yang dicek di sini hasil akhirnya).
@@ -571,11 +649,12 @@ case "${1:-}" in
   verifikasi) verifikasi 2>&1 | bersih ;;
   ujibaru)   ujibaru 2>&1 | bersih ;;
   redis)     redis 2>&1 | bersih ;;
+  bersihkan) bersihkan 2>&1 | bersih ;;            # tampilkan data uji; YA=1 bash 9server.sh bersihkan menghapusnya
   ujiredis)  ujiredis 2>&1 | bersih ;;
   kuorum)    shift; kuorum "$@" 2>&1 | bersih ;;    # bash 9server.sh kuorum [perbaiki]
   gambar)    shift; gambar "$@" 2>&1 | bersih ;;    # bash 9server.sh gambar [hapus]
   cloudfront) shift; cloudfront "$@" 2>&1 | bersih ;;  # bash 9server.sh cloudfront [buat|unggah|status|hapus]
   cek)       cek 2>&1 | bersih ;;
   hapus)     hapus 2>&1 | bersih ;;
-  *) sed -n '2,26p' "$0" ;;
+  *) sed -n '2,27p' "$0" ;;
 esac
