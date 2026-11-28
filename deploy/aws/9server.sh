@@ -19,6 +19,7 @@
 #   bash 9server.sh ujiredis    # uji failover Redis: master di-scale ke 0, Sentinel memilih master baru, node lama kembali sebagai replika
 #   bash 9server.sh ujibaru     # tabel idempotensi, Idempotency-Key, throttle 429, memori TTS (untuk kode Bab 10 dan 11 Pison)
 #   bash 9server.sh bersihkan   # tampilkan akun dan puisi buatan skrip uji; YA=1 bash 9server.sh bersihkan menghapusnya di semua tempat
+#   bash 9server.sh matikan 4   # uji ketahanan: Stop server 4, pemantau + e2e lewat ALB, Start, tunggu pulih (matikan semua = 1 sampai 9 bergantian)
 #   bash 9server.sh cek         # node, layanan, memori tiap server
 #   (jalankan 'image' TANPA "| tail": tail menahan keluaran sampai perintah selesai; registry bisa 4 menit menarik image pertama)
 #   bash 9server.sh status      # log pembangunan image
@@ -431,6 +432,63 @@ print('audio dihapus: %d, sisa: %d' % (len(ids), len(ada)))" | base64 -w0)"
   echo "Selesai. Gateway menyimpan GET /api/puisi 10 detik; galeri bersih paling lambat 10 detik lagi."
 }
 
+# ===== Uji matikan satu server (28 Nov 2026) =====
+# klaster: anggota ketiga klaster MySQL, dibaca dari node pertama yang hidup (server yang sedang dimatikan, MATI=<no>, dilewati).
+klaster() {
+  local kl d n s sandi out
+  for kl in poem auth tts; do
+    case "$kl" in
+      poem) d=4; sandi='poem' ;;
+      auth) d=7; sandi='$(cat /run/secrets/auth_db_root_password)' ;;
+      tts)  d=7; sandi='$(cat /run/secrets/tts_db_root_password)' ;;
+    esac
+    out=""
+    for n in 1 2 3; do
+      s=$(( d + n - 1 )); [ "$s" = "${MATI:-0}" ] && continue
+      out="$(sql_di "$s" "$kl-db-$n" "$sandi" mysql "select member_host, member_state, member_role from performance_schema.replication_group_members order by member_host")"
+      if echo "$out" | grep -q ONLINE; then echo "$kl-db (dibaca dari s$s): $(echo "$out" | grep -E "$kl-db-[123]" | tr '\t' ' ' | paste -sd';' -)"; break; fi
+    done
+    echo "$out" | grep -q ONLINE || echo "$kl-db: TIDAK TERBACA"
+  done
+}
+
+# matikan <no|semua>: Stop satu server (bukan Terminate), amati, lalu Start dan tunggu pulih. Selama siklus, CloudShell menjalankan
+# deploy/aws/uji-ketahanan-baru.py pantau lewat ALB (1 GET per detik, 1 tulis berkunci tiap 5 detik), dan saat server mati
+# scripts/uji_e2e.py dijalankan lewat ALB untuk melihat fitur mana yang tetap jalan. Pulih = `hitung` 44 penuh dan 9 node Ready.
+# Data yang dibuat (akun uji, puisi "Uji pantau", "Pagi di Ladang") dihapus sesudahnya dengan `bersihkan`.
+matikan() {
+  if [ "$1" = semua ]; then local k; for k in 1 2 3 4 5 6 7 8 9; do matikan "$k"; done; return; fi
+  local no="$1" id mgr pp i t0 ALB
+  id="$(id_dari "$no")"; [ -n "$id" ] || gagal "server $no tidak ada"
+  mgr=1; [ "$no" = 1 ] && mgr=2
+  ALB="http://$(cat "$W/alb-dns")"
+  echo; echo "################ UJI MATIKAN s$no ($id) ################"
+  echo "-- sebelum ($(date -u +%T)):"; MGR=$mgr hitung; klaster
+  GATEWAY="$ALB" python3 -u "$KODE_DIR/deploy/aws/uji-ketahanan-baru.py" pantau --detik "${PANTAU:-600}" --selang-tulis 5 > "$W/pantau-s$no.log" 2>&1 &
+  pp=$!
+  sleep 20
+  t0=$(date +%s)
+  echo "$(date -u +%T) Stop s$no"
+  aws ec2 stop-instances --instance-ids "$id" >/dev/null && aws ec2 wait instance-stopped --instance-ids "$id"
+  echo "$(date -u +%T) s$no stopped ($(( $(date +%s) - t0 )) detik)"
+  sleep 60
+  echo "-- saat s$no mati ($(date -u +%T)):"; MGR=$mgr hitung; MATI=$no klaster
+  echo "-- uji_e2e.py lewat ALB saat s$no mati:"
+  ( cd "$KODE_DIR" && GATEWAY="$ALB" timeout 300 python3 scripts/uji_e2e.py --tunggu 90 2>&1 | tail -11 )
+  echo "$(date -u +%T) Start s$no"
+  aws ec2 start-instances --instance-ids "$id" >/dev/null && aws ec2 wait instance-running --instance-ids "$id"
+  echo "$(date -u +%T) s$no running"
+  for i in $(seq 1 40); do
+    sleep 15
+    if MGR=$mgr hitung 2>&1 | tee "$W/hitung-tmp.txt" | grep -q "44 layanan penuh, 0 belum" && ! grep -qE "Down|Unknown" "$W/hitung-tmp.txt"; then break; fi
+  done
+  echo "$(date -u +%T) sesudah Start ($(( $(date +%s) - t0 )) detik sejak Stop):"; cat "$W/hitung-tmp.txt"; klaster
+  wait "$pp"
+  echo "-- pemantau lewat ALB (s$no): $(grep -c . "$W/pantau-s$no.log") baris; bukan 200/202:"
+  grep -E 'get=' "$W/pantau-s$no.log" | grep -vE 'get=200 tulis=(-|202)$' | head -15
+  grep RINGKASAN "$W/pantau-s$no.log"
+}
+
 # Pemeriksaan khusus kode Bab 10 dan 11 (Pison). Jalankan SESUDAH tahap 2 dan `verifikasi` (e2e 10 dari 10 lebih dulu). Dijalankan di AWS 23 Nov 2026 (tabel idempotensi 3/3, uji kunci dan throttle 9 dari 9 lulus, memori TTS terbaca).
 #  1) poem-db 3 ONLINE dan tabel `idempotensi` ada di ketiga node. poem-relay membuatnya saat start lewat primary (tereplikasi). Bila relay menyala
 #     sebelum klaster terbentuk, tabel bisa mendarat di node mentah; init-cluster.sh lalu jatuh dari `incremental` ke `clone` (yang dicek di sini hasil akhirnya).
@@ -542,7 +600,7 @@ cabut() {
 # Hasil yang benar setelah tahap 2: "44 layanan penuh, 0 belum; total 44" (43 layanan aplikasi + registry) dan 9 node Ready.
 # (Sebelum Redis Sentinel: 39. Setelah tahap 1: 29 = 28 + registry.)
 hitung() {
-  ssm 1 "docker service ls --format '{{.Name}} {{.Replicas}}' | awk '/completed\)/{ok++; next} {split(\$2,a,\"/\"); if (a[1]==a[2]) ok++; else {bad++; print \"BELUM PENUH: \" \$0}} END{print ok \" layanan penuh, \" bad+0 \" belum; total \" ok+bad}'; docker node ls --format '{{.Status}} {{.ManagerStatus}}' | sort | uniq -c"
+  ssm "${MGR:-1}" "docker service ls --format '{{.Name}} {{.Replicas}}' | awk '/completed\)/{ok++; next} {split(\$2,a,\"/\"); if (a[1]==a[2]) ok++; else {bad++; print \"BELUM PENUH: \" \$0}} END{print ok \" layanan penuh, \" bad+0 \" belum; total \" ok+bad}'; docker node ls --format '{{.Status}} {{.ManagerStatus}}' | sort | uniq -c"
 }
 
 # gambar: Lambda + bucket S3 gambar kutipan (Hands-on 1) TANPA distribusi CloudFront gambar sendiri; satu-satunya distribusi dibuat oleh
@@ -649,12 +707,14 @@ case "${1:-}" in
   verifikasi) verifikasi 2>&1 | bersih ;;
   ujibaru)   ujibaru 2>&1 | bersih ;;
   redis)     redis 2>&1 | bersih ;;
-  bersihkan) bersihkan 2>&1 | bersih ;;            # tampilkan data uji; YA=1 bash 9server.sh bersihkan menghapusnya
+  bersihkan) bersihkan 2>&1 | bersih ;;
+  klaster)   klaster 2>&1 | bersih ;;
+  matikan)   shift; matikan "$@" 2>&1 | bersih ;;  # bash 9server.sh matikan <1..9|semua>: Stop, amati, Start, tunggu pulih            # tampilkan data uji; YA=1 bash 9server.sh bersihkan menghapusnya
   ujiredis)  ujiredis 2>&1 | bersih ;;
   kuorum)    shift; kuorum "$@" 2>&1 | bersih ;;    # bash 9server.sh kuorum [perbaiki]
   gambar)    shift; gambar "$@" 2>&1 | bersih ;;    # bash 9server.sh gambar [hapus]
   cloudfront) shift; cloudfront "$@" 2>&1 | bersih ;;  # bash 9server.sh cloudfront [buat|unggah|status|hapus]
   cek)       cek 2>&1 | bersih ;;
   hapus)     hapus 2>&1 | bersih ;;
-  *) sed -n '2,27p' "$0" ;;
+  *) sed -n '2,28p' "$0" ;;
 esac
