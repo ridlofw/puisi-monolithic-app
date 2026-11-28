@@ -1,7 +1,8 @@
 # Arsitektur Deploy di AWS Sandbox
 
-Dokumen ini menjelaskan **bentuk sistem yang benar-benar berjalan** di AWS pada 23 November 2026, dan **kenapa bentuknya begitu**: kenapa 9 server, kenapa layanan digabung di server yang sama,
-dan bagaimana server saling berhubungan. Langkah membuatnya ada di [`PANDUAN-DEPLOY-AWS.md`](PANDUAN-DEPLOY-AWS.md); cerita eksperimennya di [`LAPORAN-EKSPERIMEN-AWS.md`](LAPORAN-EKSPERIMEN-AWS.md).
+Dokumen ini menjelaskan **bentuk sistem yang benar-benar berjalan** di AWS, dan **kenapa bentuknya begitu**: kenapa 9 server, kenapa layanan digabung di server yang sama,
+dan bagaimana server saling berhubungan. Sebagian besar angka diukur pada 23 November 2026 (38 layanan, Redis masih satu layanan). Sejak revisi Hands On 3, Redis menjadi
+**3 node + 3 Sentinel** (43 layanan); bentuk itu dideploy dari nol dan diuji di AWS pada **28 November 2026**. Bagian yang berubah karena Redis Sentinel ditandai "(28 Nov)". Langkah membuatnya ada di [`PANDUAN-DEPLOY-AWS.md`](PANDUAN-DEPLOY-AWS.md); cerita eksperimennya di [`LAPORAN-EKSPERIMEN-AWS.md`](LAPORAN-EKSPERIMEN-AWS.md).
 
 Setiap pernyataan diberi label: **[terukur]** dibaca dari sistem yang berjalan, **[terbukti]** diuji dan hasilnya tercatat, **[hitungan]** dihitung dari angka terukur,
 **[aturan]** tertulis di aturan lab tetapi tidak saya uji, **[prediksi]** diperkirakan dari rancangan dan belum diuji.
@@ -27,8 +28,8 @@ Setiap pernyataan diberi label: **[terukur]** dibaca dari sistem yang berjalan, 
                          zona a zona b zona c
                          +----+ +----+ +----+
    KELOMPOK A (manager)  | s1 | | s2 | | s3 |  gateway, RabbitMQ 1/2/3, OpenSearch 1/2/3 + HAProxy,
-   infra + pencarian +   +----+ +----+ +----+  auto-tagging, analisis-emosi, search-service,
-   analisis                                    search-consumer, Redis (s2), registry (s1)
+   infra + pencarian +   +----+ +----+ +----+  Redis 1/2/3 + Sentinel 1/2/3, auto-tagging, analisis-emosi,
+   analisis                                    search-service, search-consumer, registry (s1)
                          +----+ +----+ +----+
    KELOMPOK B (worker)   | s4 | | s5 | | s6 |  poem-db 1/2/3 (+router di s4, s5), poem-service,
    puisi + genre         +----+ +----+ +----+  relay, consumer, klasifikasi-genre
@@ -40,7 +41,7 @@ Setiap pernyataan diberi label: **[terukur]** dibaca dari sistem yang berjalan, 
 Lima poin:
 
 1. **9 server `t3.small`** (2 vCPU, 2 GiB), tiga kelompok × tiga zona (a, b, c). Server nomor `N` dari tiap kelompok berada di zona yang sama (a: s1, s4, s7; b: s2, s5, s8; c: s3, s6, s9).
-2. **Setiap klaster berdata punya tiga anggota, satu per zona** (MySQL poem/auth/tts, RabbitMQ, OpenSearch). Matinya satu server atau satu zona menghilangkan paling banyak satu anggota tiap klaster, jadi kuorum bertahan.
+2. **Setiap klaster berdata punya tiga anggota, satu per zona** (MySQL poem/auth/tts, RabbitMQ, OpenSearch, dan sejak 28 Nov **Redis + Sentinel**). Matinya satu server atau satu zona menghilangkan paling banyak satu anggota tiap klaster, jadi kuorum bertahan.
 3. **Tiga server pertama adalah manager Swarm** dan menjalankan gateway (target ALB). Server data (s4 sampai s9) adalah worker.
 4. **Pembagian "8 kelompok layanan" menjadi 3 kelompok server** diputuskan dari memori dan zona (bagian 3), bukan dari siapa pemilik komponennya.
 5. **Angka 9 adalah batas efektif akun ini.** API EC2 menerima peluncuran lebih dari 9, tetapi sistem lab menghentikan kelebihannya dalam ± 10 detik, di region mana pun (bagian 2). Itu juga mendekati kebutuhan memori minimum.
@@ -75,7 +76,8 @@ dan pengujian ini sebaiknya tidak diulang.
 ### 2.4 Kenapa 9 tetap tepat untuk rancangan ini
 1. **Itu batas efektifnya.** Tidak ada cara mempertahankan lebih dari 9.
 2. **9 juga mendekati kebutuhan minimum.** Pemakaian memori terukur dengan 38 layanan (sesudah satu uji ujung ke ujung): s1 sampai s3 **3516 MB**, s4 sampai s6 **3482 MB**, s7 sampai s9 **4207 MB**, jumlah **11 205 MB**
-   dari 17 181 MB (9 × 1909 MB), yaitu **65%** **[terukur]**. Bila jumlah server diubah dengan beban yang sama **[hitungan kasar; overhead tetap per server membuat total sedikit lebih kecil bila servernya lebih sedikit]**:
+   dari 17 181 MB (9 × 1909 MB), yaitu **65%** **[terukur]**. Dengan 43 layanan (Redis Sentinel, 28 Nov, sesudah empat uji ujung ke ujung, failover Redis, dan `ujibaru`):
+   s1 sampai s3 **3654 MB**, s4 sampai s6 **3345 MB**, s7 sampai s9 **4337 MB**, jumlah **11 336 MB**, yaitu **66%** **[terukur, `9server.sh memori` kolom "terpakai"]**. Bila jumlah server diubah dengan beban yang sama **[hitungan kasar; overhead tetap per server membuat total sedikit lebih kecil bila servernya lebih sedikit]**:
 
    | Jumlah server `t3.small` | RAM total | Pemakaian | Kesimpulan |
    |---|---|---|---|
@@ -137,13 +139,15 @@ Penggabungan diputuskan dengan tiga aturan:
 
 **Evaluasi sesudah diukur (jujur):** gabungan `auth` + `tts` ternyata paling berat (s7 sampai s9: tersedia 267 sampai 426 MB, swap sampai 397 MB), sedangkan kelompok B masih tersedia 516 sampai 629 MB. Pada 9 server, **memindahkan worker suara
 dan SeaweedFS ke kelompok B** akan menyeimbangkan memori **[prediksi, belum dicoba]**. Pilihan awal didasarkan pada pemilik komponen dan pengukuran 23 layanan; pengukuran 38 layanan baru ada sesudah tahap 2.
+Pada 28 Nov (43 layanan) gambarannya sama: kelompok C tetap paling ketat (s8 tersedia 212 MB; s7 swap 588 MB dengan worker suara 315 MiB), kelompok A tersedia 457 sampai 524 MB
+walau kini menampung tiga node Redis dan tiga Sentinel, kelompok B 589 sampai 621 MB **[terukur]**.
 
 ### 3.3 Dua jenis penempatan
 | Jenis | Aturan | Contoh |
 |---|---|---|
-| **Dipaku ke satu server** (layanan berdata) | `pool` **dan** `slot` (1, 2, 3). Slot `N` berarti anggota klaster ke-`N`, di server berzona `N` | poem-db-1..3, auth-db-1..3, tts-db-1..3, rabbitmq-1..3, opensearch-1..3, poem-db-router-1 dan -2; SeaweedFS (`puisi.audio=true`) |
+| **Dipaku ke satu server** (layanan berdata) | `pool` **dan** `slot` (1, 2, 3). Slot `N` berarti anggota klaster ke-`N`, di server berzona `N` | poem-db-1..3, auth-db-1..3, tts-db-1..3, rabbitmq-1..3, opensearch-1..3, poem-db-router-1 dan -2, **redis-1..3 dan redis-sentinel-1..3 (28 Nov)**; SeaweedFS (`puisi.audio=true`) |
 | **Satu salinan per server pool** (`mode: global`) | hanya `pool` | gateway, poem-service, relay, consumer, auth-service, auto-tagging, genre, emosi, HAProxy OpenSearch |
-| **Bebas, jumlah tetap** (`replicas`) | `pool`, Swarm memilih server | Redis (1), search-service (2), search-consumer (1), text-to-speech (1), auth-db-router (2), tts-db-router (2, maksimal 1 per server), registry (dipaku slot 1) |
+| **Bebas, jumlah tetap** (`replicas`) | `pool`, Swarm memilih server | Redis (1; hanya sampai 24 Nov), search-service (2), search-consumer (1), text-to-speech (1), auth-db-router (2), tts-db-router (2, maksimal 1 per server), registry (dipaku slot 1) |
 
 Dari `stack.yaml`, tiga layanan `global` dijadikan `replicas` oleh [`override-9server.yaml`](../deploy/aws/override-9server.yaml) supaya hemat memori di server 2 GiB.
 
@@ -167,6 +171,10 @@ Diambil dengan `docker service ps` pada 23 November 2026 sekitar 15:50 UTC **[te
 
 Total 56 task. (Label manager dibaca dari `docker node ls`: satu Leader, dua Reachable, enam Ready.) Server tempat layanan "bebas" bukan jaminan: Swarm dapat memindahkannya bila server mati
 (misalnya replika kedua `tts-db-router` dibuat ulang di server lain selama sesi ini).
+
+**Perubahan 28 Nov (Redis Sentinel) [terukur]:** layanan `Redis` di s2 diganti enam layanan yang dipaku: **s1** `redis-1` + `redis-sentinel-1`, **s2** `redis-2` + `redis-sentinel-2`,
+**s3** `redis-3` + `redis-sentinel-3` (dibaca dengan `docker service ps` pada server `ip-172-31-20-141`, `-40-27`, `-3-180` = s1, s2, s3). Jumlah layanan menjadi 43
+(`hitung`: 44 dengan registry). Worker suara pada 28 Nov berjalan di **s7**, bukan s8: Swarm bebas memilih di antara s7 sampai s9.
 
 ---
 
@@ -199,7 +207,9 @@ Total 56 task. (Label manager dibaca dari `docker node ls`: satu Leader, dua Rea
 | RabbitMQ | auto-tagging, analisis-emosi, search-consumer (s1 sampai s3); klasifikasi-genre dan poem-consumer (s4 sampai s6); text-to-speech (s8) | tugas analisis dan hasilnya | AMQP 5672 (antrean quorum 3 replika) |
 | text-to-speech | SeaweedFS (s7); tts-db-router | menyimpan audio; mencatat pekerjaan | HTTP 8333; MySQL 6446 |
 | search-service, search-consumer | HAProxy `opensearch` → opensearch-1..3 (s1 sampai s3) | indeks dan cari | HTTP 9200 (antar node OpenSearch 9300) |
-| search-service dan search-consumer | Redis (s2) | cache | 6379 |
+| poem-service, relay, consumer (s4 sampai s6); search-service dan search-consumer | **Redis Sentinel** `redis-sentinel-1..3` (s1 sampai s3) untuk bertanya siapa master, lalu **master Redis** (`redis-1`, `-2`, atau `-3`; diperiksa dengan `ROLE`) | cache; menemukan master (`services/*/src/MasterRedis.php`) | 26379; 6379 |
+| redis-2, redis-3 (replika) | master Redis | salinan data cache | 6379 |
+| redis-sentinel-1..3 | ketiga node Redis dan sesama Sentinel | memantau, memilih master baru (kuorum 2) | 6379; 26379 |
 | manager (s1 sampai s3) | semua server | kendali Swarm | 2377, 7946, 4789 |
 
 (Nama alamat persis ada di `stack.yaml`.)
@@ -215,12 +225,13 @@ Total 56 task. (Label manager dibaca dari `docker node ls`: satu Leader, dua Rea
 
 ## 6. Ketahanan: apa yang bertahan bila ada yang mati
 
-Kuorum: Swarm manager 3 (menahan 1 mati), MySQL InnoDB 3 (1), RabbitMQ quorum 3 (1), OpenSearch 3 pengelola (1). Dua server dari kelompok yang sama mati berarti klaster kelompok itu kehilangan kuorum.
+Kuorum: Swarm manager 3 (menahan 1 mati), MySQL InnoDB 3 (1), RabbitMQ quorum 3 (1), OpenSearch 3 pengelola (1), Redis Sentinel 3 dengan kuorum 2 (1). Dua server dari kelompok yang sama mati berarti klaster kelompok itu kehilangan kuorum.
 
 | Kejadian | Yang terjadi | Label |
 |---|---|---|
 | **s4 mati** (PRIMARY poem-db-1, 1 dari 3 poem-service) | 0 dari 258 probe lewat ALB gagal; PRIMARY pindah ke poem-db-3; penulisan tetap berhasil; pulih dan bergabung ± 100 detik | **[terbukti]**, tetapi saat baru **23 layanan** |
-| s1 mati (manager Leader, gateway, RabbitMQ-1, OpenSearch-1, **registry**) | Raft 2 dari 3; gateway 2 dari 3 lewat ALB; RabbitMQ 2 dari 3; OpenSearch kuning. **Registry hilang**: layanan yang sudah berjalan tidak terganggu, tetapi image baru tidak bisa ditarik sampai s1 pulih | **[prediksi]** |
+| **Layanan master Redis mati** (28 Nov: `docker service scale puisi_redis-1=0`, servernya tetap hidup) | `+sdown` dan `+odown #quorum 2/2`, lalu `+switch-master` ke `redis-3` **9 detik** sesudah perintah; ketiga Sentinel sepakat, `sentinel_tilt:0`. `redis-1` dinyalakan lagi dan 13 detik kemudian menjadi **replika** dari `redis-3`. Aplikasi menulis ke master baru (`puisi:galeri:versi` naik 23 ke 28) dan e2e tetap 10 dari 10 | **[terbukti]** (layanan, bukan server) |
+| s1 mati (manager Leader, gateway, RabbitMQ-1, OpenSearch-1, **registry**, sejak 28 Nov juga redis-1 dan redis-sentinel-1) | Raft 2 dari 3; gateway 2 dari 3 lewat ALB; RabbitMQ 2 dari 3; OpenSearch kuning; bila redis-1 master, dua Sentinel sisa memilih master baru. **Registry hilang**: layanan yang sudah berjalan tidak terganggu, tetapi image baru tidak bisa ditarik sampai s1 pulih | **[prediksi]** (failover Redis terbukti per layanan, belum dengan mematikan server) |
 | s7 mati (SeaweedFS, auth-db-1, tts-db-1) | **audio berhenti** (SeaweedFS satu proses, SPOF); login tetap lewat 2 anggota auth-db | **[prediksi]** |
 | s8 mati (text-to-speech) | antrean TTS menumpuk sampai Swarm menjadwalkan ulang worker di server berlabel `tts` | **[prediksi]** |
 | Satu zona mati (s1, s4, s7) | tiap klaster kehilangan satu anggota, kuorum bertahan; audio berhenti | **[prediksi, tidak diuji]** |
@@ -233,7 +244,9 @@ Skenario uji yang belum dijalankan ada di [`LAPORAN-EKSPERIMEN-AWS.md`](LAPORAN-
 ## 7. Titik tunggal dan batas
 
 - **SeaweedFS** satu proses di satu server (s7): audio berhenti bila server itu mati. EFS tidak ada di sandbox.
-- **Registry** satu salinan di s1; **Redis** satu salinan (cache); **text-to-speech** satu replika.
+- **Registry** satu salinan di s1; **text-to-speech** satu replika. (Redis bukan lagi titik tunggal sejak 28 Nov: 3 node + 3 Sentinel.)
+- **Sentinel peka terhadap server yang sangat sibuk:** 28 Nov, saat image TTS dibangun di s1, `redis-sentinel-1` masuk mode TILT dan healthcheck-nya tiga kali melewati batas 3 detik,
+  lalu Swarm menyalakannya ulang. Master tidak berpindah. Membangun image di s1 (yang juga manager dan anggota Redis) adalah beban tambahan yang tidak ada saat aplikasi berjalan biasa.
 - **ALB** terbuka lewat HTTP langsung; **overlay tidak dienkripsi**; kata sandi database bawaan ada di `stack.yaml` (ganti sebelum dipakai di luar sandbox).
 - **s7 sampai s9 paling ketat** (bagian 3.2). `t3` adalah tipe burstable; perilaku di bawah beban banyak pengguna **belum diukur**.
 - **Tidak bisa ditambah server**: batas 9 per akun ditegakkan sistem lab (bagian 2.5 memuat jalur skala lain).
@@ -254,6 +267,9 @@ Skenario uji yang belum dijalankan ada di [`LAPORAN-EKSPERIMEN-AWS.md`](LAPORAN-
 | CloudFront dua jalur (S3 + ALB + Lambda) | CloudFront → ALB saja | halaman di-cache edge, server hanya mengurus API |
 | Override untuk memori, `stack.yaml` untuk perbaikan bug | semuanya di override | `stack deploy -c a -c b` menambahkan daftar healthcheck, tidak menggantinya |
 | 9, bukan 10 atau lebih | meluncurkan lebih banyak | kelebihan dihentikan sistem lab dalam ± 10 detik (bagian 2) |
+| Redis 3 node + 3 Sentinel, satu pasang per server infra (28 Nov) | satu Redis yang dijadwal ulang bila servernya mati; ElastiCache | failover dalam detik tanpa layanan terkelola (ElastiCache belum diuji di sandbox). Biaya memori kecil: s1 sampai s3 masih 457 sampai 524 MB tersedia |
+| Sentinel memakai nama layanan Swarm (VIP) | IP tetap seperti di Compose | VIP tetap ter-resolve walau task mati, jadi Sentinel tidak masuk TILT karena nama; terbukti dengan failover 28 Nov |
+| Kode diambil server 1 lewat `git clone`; satu bucket dan satu CloudFront (28 Nov) | unggah `kode.tgz` lewat bucket kode; distribusi gambar sendiri | lebih sedikit resource dan langkah; pola yang sama dengan versi Single |
 
 ---
 
@@ -266,4 +282,5 @@ Skenario uji yang belum dijalankan ada di [`LAPORAN-EKSPERIMEN-AWS.md`](LAPORAN-
 | Penempatan layanan | [`penempatan-layanan.txt`](bukti-aws/log-cloudshell/penempatan-layanan.txt) |
 | Memori dan hitungan akhir | [`21-memori-9-server-38-layanan.jpg`](bukti-aws/21-memori-9-server-38-layanan.jpg), [`25-semua-layanan-penuh-38-ditambah-registry.jpg`](bukti-aws/25-semua-layanan-penuh-38-ditambah-registry.jpg) |
 | Uji matikan s4 | [`08` sampai `12`](bukti-aws/) dan `log-cloudshell/mon.log`, `saat-mati.txt` |
+| Redis Sentinel di Swarm (penempatan, failover, TILT), 44 layanan, memori 28 Nov | [`deploy-9server-sentinel-28nov.txt`](bukti-aws/log-cloudshell/deploy-9server-sentinel-28nov.txt), [`28-aplikasi-9server-sentinel-lewat-https-28nov.jpg`](bukti-aws/28-aplikasi-9server-sentinel-lewat-https-28nov.jpg) |
 | Aturan Readme (9 instance, 32 vCPU) | **belum dilampirkan**; Ridlo dapat menambahkan tangkapan layar tombol Readme di halaman lab |
