@@ -30,22 +30,32 @@ final class Cache
             return null;
         }
 
-        foreach (Konfig::daftarHostRedis() as $butir) {
-            [$host, $portStr] = array_pad(explode(':', $butir, 2), 2, '6379');
-            $port             = (int) $portStr;
-            try {
-                $redis = new \Redis();
-                if (@$redis->connect($host, $port, 0.25, null, 0, 0.25)) {
-                    self::$klien = $redis;
-                    return self::$klien;
-                }
-            } catch (\Throwable) {
-                // Coba host Redis berikutnya atau degradasi ke DB
-            }
+        $hasil = self::penemu()->cari();
+        if ($hasil !== null && $hasil[0] instanceof \Redis) {
+            self::$klien = $hasil[0];
+            return self::$klien;
         }
 
+        // Tidak ada node Redis yang terjangkau: degradasi ke DB
         self::$waktuGagalTerakhir = microtime(true);
         return null;
+    }
+
+    private static function penemu(): MasterRedis
+    {
+        // env dibaca setiap kali seperti sebelumnya; ingatan master ada di berkas, bukan di objek ini
+        $hosts    = Konfig::daftarHostRedis();
+        $sentinel = Konfig::daftarSentinelRedis();
+        // nama berkas mengikuti konfigurasi, supaya alamat tersimpan dari konfigurasi lain tidak terpakai
+        $berkas = sys_get_temp_dir() . '/puisi-redis-' . substr(md5(json_encode([$hosts, $sentinel])), 0, 8) . '.json';
+        return new MasterRedis($hosts, $sentinel, Konfig::namaMasterRedis(), $berkas);
+    }
+
+    /** Koneksi rusak, atau penulisan ditolak READONLY (phpredis melempar RedisException): cari master lagi. */
+    private static function lepas(): void
+    {
+        self::$klien = null;
+        self::penemu()->lupakan();
     }
 
     private static function kunciGaleri(\Redis $r, int $hal, int $perHal = 12): string
@@ -75,7 +85,7 @@ final class Cache
             $data = json_decode($mentah, true);
             return is_array($data) ? $data : null;
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
             return null;
         }
     }
@@ -95,7 +105,7 @@ final class Cache
                 $r->setex(self::kunciGaleri($r, $hal, $perHal), max(1, $ttl), $json);
             }
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
         }
     }
 
@@ -116,7 +126,7 @@ final class Cache
             $data = json_decode($mentah, true);
             return is_array($data) ? $data : null;
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
             return null;
         }
     }
@@ -136,7 +146,7 @@ final class Cache
                 $r->setex("puisi:detail:{$id}", max(1, $ttl), $json);
             }
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
         }
     }
 
@@ -152,7 +162,7 @@ final class Cache
                 $r->del("puisi:detail:{$idPuisi}");
             }
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
         }
     }
 
@@ -164,7 +174,7 @@ final class Cache
                 $r->hIncrBy($hash, $field, $delta);
             }
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
         }
     }
 
@@ -190,7 +200,7 @@ final class Cache
             }
             $p->exec();
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
         }
     }
 
@@ -207,7 +217,7 @@ final class Cache
             $hasil = $r->hGetAll($hash);
             return is_array($hasil) ? $hasil : [];
         } catch (\Throwable) {
-            self::$klien = null;
+            self::lepas();
             return [];
         }
     }

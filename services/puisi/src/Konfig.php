@@ -90,6 +90,17 @@ final class Konfig
         return [str_contains($tunggal, ':') ? $tunggal : $tunggal . ':6379'];
     }
 
+    /** @return list<string> Sentinel host:port; kosong berarti master dicari lewat ROLE di REDIS_HOSTS saja */
+    public static function daftarSentinelRedis(): array
+    {
+        return self::daftar('REDIS_SENTINELS', '');
+    }
+
+    public static function namaMasterRedis(): string
+    {
+        return self::env('REDIS_MASTER_NAME', 'puisi');
+    }
+
     /** @return list<string> */
     public static function daftarUrlAmqp(): array
     {
