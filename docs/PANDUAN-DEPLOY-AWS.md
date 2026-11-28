@@ -221,6 +221,19 @@ Selalu jalankan `hitung` setelah memasang: replika yang macet tidak terlihat dar
 | 20 | `bash ~/9server.sh verifikasi` lalu `bash ~/9server.sh redis` | Aplikasi tetap menulis ke master baru | ± 1 menit | e2e 10 dari 10; `puisi:galeri:versi` di master baru naik |
 | 21 | `bash ~/9server.sh ujibaru` | Tabel `idempotensi`, `Idempotency-Key`, throttle 429, memori worker suara (bagian 10b) | ± 1 menit | 9 dari 9 pemeriksaan lulus |
 
+### Langkah terakhir: bersihkan data uji
+
+Uji di atas membuat akun dan puisi uji ("Pagi di Ladang" oleh Penyair E2E, "Uji idempotensi ..." oleh Penguji Ketahanan). Setelah deploy dinyatakan berhasil, hapus semuanya supaya galeri bersih:
+
+| # | Perintah | Yang terjadi | Waktu | Cek berhasil |
+|---|---|---|---|---|
+| 22 | `bash ~/9server.sh bersihkan` | **Hanya menampilkan** akun buatan skrip uji (username `e2e` atau `uji` + 8 heksa **dan** nama `Penyair E2E` atau `Penguji Ketahanan`) beserta puisinya. Akun dan puisi buatan manusia tidak cocok dengan dua syarat itu, jadi tidak ikut | ± 30 detik | daftar akun dan puisi uji, `Belum ada yang dihapus` |
+| 23 | `YA=1 bash ~/9server.sh bersihkan` | Menghapus data itu di **semua tempat**: job suara (tts-db), berkas `audio/puisi_N.mp3` (SeaweedFS), dokumen indeks (OpenSearch), puisi dan `idempotensi` (poem-db), akun (auth-db), lalu membuat cache galeri dan pencarian di Redis basi. Perintah SQL dikirim ke node PRIMARY tiap klaster | ± 1 menit | `sisa job: 0`, `audio dihapus: N, sisa: 0`, `sisa puisi uji: 0`, `sisa akun uji: 0`; menjalankan langkah 22 lagi: `Tidak ada data uji` |
+
+Jalankan sesudah uji benar-benar selesai (tidak ada puisi yang masih "diproses"). 28 Nov: 6 akun dan 7 puisi uji dihapus; sesudahnya lewat HTTPS galeri `"data":[]`,
+pencarian `pinang` 0 hasil, `/audio/puisi_3.mp3` 404, `/api/puisi/sehat` 200. Kode OpenSearch `404` untuk puisi yang dikirim sebelum pencarian dipasang itu wajar (memang tidak pernah terindeks).
+Versi Single (`1server.sh`) **belum** punya perintah ini.
+
 Jalur yang dibuat langkah 17:
 
 | Jalur | Tujuan | Cache |
@@ -456,6 +469,7 @@ halaman aplikasi lewat HTTPS: [`bukti-aws/28-aplikasi-9server-sentinel-lewat-htt
 | 19 ujiredis | **Dijalankan** | master awal `redis-1` (s1); 13:19:16 `scale puisi_redis-1=0`; `+sdown` 13:19:23, `+odown #quorum 2/2` 13:19:23, **`+switch-master ... redis-3` 13:19:25 (9 detik sesudah perintah)**; ketiga Sentinel menyebut `redis-3`, `sentinel_tilt:0`; `redis-1` dinyalakan lagi 13:19:30 dan **13 detik kemudian menjadi replika** (`mulai.sh: redis-1 menjadi replika dari redis-3`), `connected_slaves:2`. 118 probe `GET /api/puisi`, 0 gagal (catatan: gateway menyimpan `GET /api/puisi` di cache-nya sendiri, jadi angka ini **bukan** bukti ketersediaan Redis; buktinya ada di baris berikut, jalur tulis) |
 | 20 verifikasi + redis sesudah failover | **Dijalankan** | e2e **10 dari 10**; `puisi:galeri:versi` di master baru `redis-3` naik dari 23 ke 28 (aplikasi menulis ke master baru); REDIS OK |
 | 21 ujibaru | **Dijalankan** | **9 dari 9 pemeriksaan lulus** (kunci sama: id sama dan `Idempotent-Replay: true`; isi beda 409; kunci pendek 400; 120 GET tanpa 429; 300 POST cepat: 29 diteruskan, 271 `429` JSON). Catatan: baris "tabel idempotensi" mencetak `0` di ketiga node, padahal pemeriksaan langsung sesudahnya menemukan tabel itu di poem-db-1, -2, -3 dan baris perintah yang sama dijalankan ulang mencetak `1`. Penyebab angka 0 itu **belum dipastikan** |
+| 22, 23 bersihkan | **Dijalankan** (commit `ff2bc67`, perbaikan pesan `42a8061`) | 6 akun dan 7 puisi uji terhapus di semua tempat; galeri dan pencarian kosong lewat HTTPS; layanan tetap sehat |
 | Jumlah resource | **Diperiksa** | 9 server, 2 Security Group, 1 ALB, **1 bucket, 1 Lambda, 1 CloudFront** |
 | Bagian 8b (hapus) | **Belum** (resource dibiarkan menyala sampai Ridlo mengizinkan penghapusan) | |
 

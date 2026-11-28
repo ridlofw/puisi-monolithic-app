@@ -9,6 +9,41 @@ saya uji di sandbox ini; **[contoh]** = angka contoh dari uji lain, bukan hasil 
 
 ---
 
+## 0. Sebelum merancang: batas yang ada di jalur permintaan (dicek 28 Nov 2026)
+
+Pertanyaan tim: "apakah AWS membatasi per IP?". Jawabannya, dicek pada sistem 9 server yang berjalan **[terbukti, hanya membaca]**
+(keluaran: [`bukti-aws/log-cloudshell/deploy-9server-sentinel-28nov.txt`](bukti-aws/log-cloudshell/deploy-9server-sentinel-28nov.txt)):
+
+| Bagian | Batas | Siapa yang memasang |
+|---|---|---|
+| CloudFront dan ALB | **tidak ada batas per IP**: tidak ada WAF (`WAF CloudFront: 0`, `WAF regional: 0`, distribusi tanpa WebACL). Keduanya menskalakan diri sendiri | AWS (tanpa pengaturan dari kita) |
+| CPU 9 server | kredit CPU `unlimited` di kesembilannya: CPU **tidak diperlambat** saat kredit habis, tetapi pemakaian di atas 20% lama-lama ditagih sedikit | AWS (bawaan `t3`) |
+| Lambda (gambar kutipan) | 1000 eksekusi bersamaan | AWS |
+| **Gateway (nginx), per IP pengunjung dan per gateway** | login 10 per menit (burst 5); kirim puisi 5 per detik (burst 30); pencarian 30 per detik (burst 60). Lebih dari itu dijawab `429` | **kode kita** (Bab 10 Pison, `gateway/nginx.conf`, `gateway/rute/*.conf`) |
+| **Gateway, cache** | `GET /api/puisi` dan pencarian yang sama disimpan **10 detik** di gateway | **kode kita** |
+
+Akibatnya bagi stress test:
+- Dari **satu IP**, angka maksimal kirim puisi dan pencarian yang terlihat adalah **batas 429 gateway kita**, bukan kemampuan server. Scalable punya 3 gateway (sekitar 3 kali lipat), Single 1.
+  Untuk mencari kemampuan server sungguhan, tim harus memilih: (a) menguji jalur baca saja, (b) memakai banyak sumber IP, atau (c) memakai image gateway khusus uji dengan batas dilonggarkan
+  (dicatat jelas di laporan). Belum diputuskan.
+- Permintaan baca yang sama dijawab dari cache gateway, jadi yang terukur adalah nginx. `scripts/uji_stres.py` sudah mengacak kata pencarian supaya sebagian melewati cache.
+- **Alat beban sendiri bisa menjadi leher botol.** CloudShell hanya 2 vCPU dan 3,8 GB RAM. Bila CPU alat beban mendekati 100%, angka tahap itu tidak sah.
+
+Pilihan tempat alat beban (belum diputuskan tim):
+
+| Pilihan | Kelebihan | Kekurangan |
+|---|---|---|
+| Laptop | gratis, mudah | jaraknya jauh dari us-east-1 (setiap permintaan menempuh internet ke Amerika), kecepatan internet laptop ikut terukur |
+| CloudShell | satu region dengan server, tidak memakai slot instance | 2 vCPU; satu IP; sesi bisa berhenti bila diam |
+| **EC2 di akun teman** (disarankan) | satu region, latensi rendah; bisa beberapa server = beberapa IP; tidak memakai slot 9 server milik akun yang diuji | butuh akun kedua; Single di akun teman harus dimatikan saat menguji Scalable, atau sebaliknya alat beban dipasang di akun yang tidak sedang dipakai |
+| Lambda sebagai alat beban | banyak eksekusi dan IP | perlu dibuat dan diuji dulu |
+
+Instance AWS dipakai bukan karena "internetnya kencang" saja, melainkan karena letaknya dekat dengan server (jeda jaringan kecil dan stabil), jadi yang terukur benar-benar
+kemampuan aplikasi, bukan internet di antaranya. Satu hal yang **belum saya cek**: aturan pemakaian AWS Academy dan kebijakan AWS untuk uji beban
+bervolume sangat besar (yang menyerupai serangan). Uji beban terhadap aplikasi sendiri dengan volume wajar umumnya diperbolehkan; periksa halaman aturan lab sebelum menjalankan uji besar.
+
+---
+
 ## 1. CloudWatch itu apa?
 
 Analogi: CloudWatch adalah **dasbor mobil** untuk server EC2. Tanpa memasang apa pun, AWS sudah mencatat beberapa "jarum" setiap server:

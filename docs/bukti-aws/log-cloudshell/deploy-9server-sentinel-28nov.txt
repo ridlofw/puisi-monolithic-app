@@ -403,6 +403,55 @@ s8: terpakai 1548 tersedia 212 dari 1909 MB; swap 79 MB; load: 0.21, 0.26, 0.22
 s9: terpakai 1460 tersedia 302 dari 1909 MB; swap 144 MB; load: 0.11, 0.24, 0.24
 Sat Nov 28 01:23:59 PM UTC 2026
 
+##### Langkah 22, 23: bersihkan data uji (commit ff2bc67)
+PRIMARY: poem-db-1 (s4), auth-db-1 (s7), tts-db-1 (s7)
+==== Akun uji (auth-db) ====
+1 e2e33762ae5 Penyair E2E
+2 e2ec4e05a3d Penyair E2E
+3 e2e4aeb6436 Penyair E2E
+4 e2ef6ffbfa0 Penyair E2E
+5 e2e63a880c6 Penyair E2E
+6 ujicdcbd010 Penguji Ketahanan
+==== Puisi milik akun uji (poem-db) ====
+1 Pagi di Ladang Penyair E2E
+2 Pagi di Ladang Penyair E2E
+3 Pagi di Ladang Penyair E2E
+4 Pagi di Ladang Penyair E2E
+5 Pagi di Ladang Penyair E2E
+6 Uji idempotensi 4bc3ab0b Penguji Ketahanan
+7 Uji idempotensi 4bc3ab0b Penguji Ketahanan
+Jumlah: 6 akun uji, 7 puisi uji. Puisi lain tidak disentuh.
+Belum ada yang dihapus. Untuk menghapus: YA=1 bash 9server.sh bersihkan
+(lalu, atas izin Ridlo: YA=1 bash 9server.sh bersihkan)
+==== tts-db: job suara ====
+sisa job: 0
+==== SeaweedFS: berkas audio ====
+s7: audio dihapus: 7, sisa: 0
+==== OpenSearch: dokumen indeks puisi ====
+1=404 2=200 3=200 4=200 5=200 6=200 7=200 (200 dihapus, 404 memang tidak terindeks)
+==== poem-db: puisi dan idempotensi ====
+sisa puisi uji: 0
+==== auth-db: akun uji ====
+sisa akun uji: 0
+==== Redis: cache galeri dan pencarian dibuat basi ====
+master redis-3: galeri versi 39, cari versi 19
+Selesai. Gateway menyimpan GET /api/puisi 10 detik; galeri bersih paling lambat 10 detik lagi.
+Pemeriksaan lewat HTTPS 12 detik kemudian:
+galeri: {"status":"sukses","pesan":"Daftar puisi berhasil dimuat.","data":[]}
+cari pinang: {"status":"sukses","pesan":"Pencarian selesai.","data":[],"total":0,"hal":1}
+audio 3: 404
+sehat: 200
+bash 9server.sh bersihkan (ulang, commit 42a8061): Tidak ada data uji. Selesai.
+
+##### Cek batas untuk rencana stress test (hanya membaca)
+== CloudShell: CPU 2, RAM 3819 MB
+== Lambda batas akun: 1000 1000
+== Kredit CPU 9 server: unlimited (kesembilannya)
+== WAF CloudFront: 0
+== WAF regional: 0
+== CloudFront WebACL pada distribusi: (kosong)
+== ALB atribut: idle_timeout.timeout_seconds 60 routing.http.drop_invalid_header_fields.enabled false
+
 ##### Pemeriksaan ulang tabel idempotensi (sesudah ujibaru)
 show tables from poem_db (poem-db-1): idempotensi, outbox, puisi
 poem-db-1 (s4): idempotensi$
