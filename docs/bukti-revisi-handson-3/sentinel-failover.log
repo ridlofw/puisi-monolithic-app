@@ -1,0 +1,24 @@
+# docker logs redis-sentinel-1, baris +sdown, +odown, +switch-master, +convert-to-slave
+1:X 28 Nov 2026 09:24:03.776 # +monitor master puisi 10.231.1.11 6379 quorum 2
+1:X 28 Nov 2026 09:24:26.108 # +sdown master puisi 10.231.1.11 6379
+1:X 28 Nov 2026 09:24:26.167 # +odown master puisi 10.231.1.11 6379 #quorum 2/2
+1:X 28 Nov 2026 09:24:28.271 # +switch-master puisi 10.231.1.11 6379 10.231.1.12 6379
+1:X 28 Nov 2026 09:24:40.423 # +sdown master puisi 10.231.1.12 6379
+1:X 28 Nov 2026 09:25:05.400 # +sdown master puisi 10.231.1.12 6379
+1:X 28 Nov 2026 09:25:05.498 # +odown master puisi 10.231.1.12 6379 #quorum 3/2
+1:X 28 Nov 2026 09:25:06.539 # +switch-master puisi 10.231.1.12 6379 10.231.1.13 6379
+1:X 28 Nov 2026 09:29:29.053 # +sdown master puisi 10.231.1.13 6379
+1:X 28 Nov 2026 09:29:29.120 # +odown master puisi 10.231.1.13 6379 #quorum 3/2
+1:X 28 Nov 2026 09:29:30.312 # +switch-master puisi 10.231.1.13 6379 10.231.1.12 6379
+1:X 28 Nov 2026 09:29:44.645 # +sdown master puisi 10.231.1.12 6379
+1:X 28 Nov 2026 09:30:10.564 # +sdown master puisi 10.231.1.12 6379
+1:X 28 Nov 2026 09:30:11.689 # +odown master puisi 10.231.1.12 6379 #quorum 3/2
+1:X 28 Nov 2026 09:30:11.777 # +switch-master puisi 10.231.1.12 6379 10.231.1.11 6379
+1:X 28 Nov 2026 09:32:13.015 # +sdown master puisi 10.231.1.11 6379
+1:X 28 Nov 2026 09:32:13.096 # +odown master puisi 10.231.1.11 6379 #quorum 3/2
+1:X 28 Nov 2026 09:32:13.456 # +switch-master puisi 10.231.1.11 6379 10.231.1.13 6379
+1:X 28 Nov 2026 09:32:27.398 # +sdown master puisi 10.231.1.13 6379
+1:X 28 Nov 2026 09:32:28.484 # +odown master puisi 10.231.1.13 6379 #quorum 3/2
+1:X 28 Nov 2026 09:32:54.451 # +sdown master puisi 10.231.1.13 6379
+1:X 28 Nov 2026 09:32:54.511 # +odown master puisi 10.231.1.13 6379 #quorum 2/2
+1:X 28 Nov 2026 09:32:56.698 # +switch-master puisi 10.231.1.13 6379 10.231.1.12 6379

@@ -1,0 +1,42 @@
+# python scripts/uji_ketahanan.py (semua tahap)
+# 2026-11-28 sekitar 16.25 WIB. Kode Redis sama dengan commit, kecuali satu perbedaan kecil: objek MasterRedis
+# saat itu masih disimpan statis per proses (kemudian dibuat ulang dari env setiap dipakai). Tahap Redis diulang di kode final: uji-ketahanan-redis.txt
+login                  LULUS  pengguna uji baru
+idempoten-ulang        LULUS  dua POST kunci sama -> 202 202, id 76 dan 76, Idempotent-Replay true
+idempoten-konflik      LULUS  kunci sama isi beda -> 409
+idempoten-validasi     LULUS  kunci terlalu pendek -> 400
+idempoten-bersamaan    LULUS  10 POST bersamaan -> kode [202], 1 id unik
+pemutus-db-gagal-cepat LULUS  Router 1 di-pause: 20 POST 202, 7 dari 20 lambat > 1,5 s, median 10 terakhir 83 ms
+pemutus-db-pulih       LULUS  Router 1 kembali, half-open lalu closed tercatat di log poem-service
+pemutus-auth-gagal-cepat LULUS  auth-db di-pause: 14 register -> [503], 5 lambat > 1,5 s, median 6 terakhir 6 ms
+pemutus-auth-pulih     LULUS  auth-db kembali, register -> [201, 201, 201, 201]
+pemutus-os-degradasi   LULUS  OpenSearch di-pause, q=pinang -> 200 lapis redis-basi (sebelumnya 200 dari opensearch)
+pemutus-os-gagal-cepat LULUS  12 query tanpa salinan -> [503], 9 cepat < 200 ms, 3 lambat > 1,5 s (tanpa breaker 12 lambat)
+pemutus-os-pulih       LULUS  OpenSearch kembali, q=pinang -> 200 lapis redis
+indeks-paralel         LULUS  30 puisi (120 event indeks) terindeks dan antrean kosong dalam 41.3 s, batas 60 s
+gateway-vip-failover   LULUS  150 request ke VIP, 5 gagal, celah terpanjang 4.0 s, 38 sukses lewat gateway-2 saat gateway-1 mati
+gateway-vip-kembali    LULUS  gateway-1 menyala lagi, port 80 -> 200
+throttling-cari        LULUS  160 pencarian serentak -> 70 x 200, 90 x 429 JSON
+throttling-kirim       LULUS  60 kiriman serentak -> 31 x 202, 29 x 429
+throttling-galeri-bebas LULUS  GET galeri tetap 200 setelah throttling
+redis-awal             LULUS  master redis-3, galeri -> 200 lapis redis
+    sentinel: 1:X 28 Nov 2026 09:29:29.053 # +sdown master puisi 10.231.1.13 6379
+    sentinel: 1:X 28 Nov 2026 09:29:29.120 # +odown master puisi 10.231.1.13 6379 #quorum 3/2
+    sentinel: 1:X 28 Nov 2026 09:29:30.312 # +switch-master puisi 10.231.1.13 6379 10.231.1.12 6379
+redis-failover-promosi LULUS  master redis-3 dihentikan, Sentinel menunjuk redis-2 setelah 7.3 detik
+redis-failover-galat   LULUS  28 probe galeri selama failover, 0 galat, lapis {'db': 11, 'redis': 17}, terlama 286 ms
+redis-failover-tulis   LULUS  kunci baru hal=75270: db lalu redis (cache ditulis ke master baru)
+redis-lama-jadi-replika LULUS  redis-3 menyala lagi sebagai slave, klaster kembali 1 master 2 replika
+redis-mati-ke-db       LULUS  ketiga node Redis berhenti, 10 galeri -> [200] lapis ['db'], median 9 ms, terlama 760 ms
+redis-mati-pulih       LULUS  Redis menyala lagi, master redis-2 dengan 2 replika setelah 1 detik, galeri lapis redis
+redis-stres-awal       LULUS  klaster stabil, master redis-2
+    pengguna   request      rps   P50 ms   P95 ms   P99 ms  galat %    429 %  SLO
+    40           34522    767.2     47.6     76.2     99.4     0.00    21.14  ok
+    -- throughput puncak 767.2 rps pada 40 pengguna; titik hancur SLO: tidak tercapai
+    sentinel: 1:X 28 Nov 2026 09:30:10.564 # +sdown master puisi 10.231.1.12 6379
+    sentinel: 1:X 28 Nov 2026 09:30:11.689 # +odown master puisi 10.231.1.12 6379 #quorum 3/2
+    sentinel: 1:X 28 Nov 2026 09:30:11.777 # +switch-master puisi 10.231.1.12 6379 10.231.1.11 6379
+redis-stres-promosi    LULUS  40 pengguna 45 detik, master redis-2 dihentikan pada detik 18, redis-1 menjadi master setelah 6.5 detik
+redis-stres-galat      LULUS  34522 request, 767.2 rps, P99 99.4 ms, galat 0.0 persen, 429 21.14 persen
+redis-stres-hit-pulih  LULUS  hit ratio Redis sebelum failover 53.4% (556 baca), setelah promosi 53.7% (869 baca)
+-- 29 dari 29 tahap LULUS

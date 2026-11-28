@@ -1,0 +1,16 @@
+# Pemakaian RAM Redis, docker stats --no-stream
+# Sebelum (Redis tunggal lama, container puisi-redis-1 dari konfigurasi main, baru menyala dan menganggur):
+puisi-redis-1 4.98 MiB
+
+# Sesudah (2026-11-28, sesaat setelah uji-ketahanan-redis.txt, cache terisi):
+puisi-redis-1-1 6.23 MiB
+puisi-redis-2-1 6.57 MiB
+puisi-redis-3-1 9.00 MiB
+puisi-redis-sentinel-1-1 9.62 MiB
+puisi-redis-sentinel-2-1 4.53 MiB
+puisi-redis-sentinel-3-1 7.64 MiB
+total 43.6 MiB untuk 6 container
+
+# Tambahan RAM sekitar 39 MiB (43.6 MiB dikurangi 4.98 MiB). Redis lama diukur saat menganggur; satu node dengan cache
+# terisi memakai 6 sampai 9 MiB (lihat di atas), jadi tambahan sebenarnya sekitar 35 sampai 39 MiB. Batas atas tiap node tetap maxmemory 128mb, jadi
+# bila cache penuh, kedua replika masing-masing bisa memakai sampai sekitar 128 MiB data seperti master.

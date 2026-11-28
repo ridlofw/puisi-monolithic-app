@@ -1,0 +1,24 @@
+# python scripts/uji_ketahanan.py --tahap redis-failover,redis-mati,redis-stres
+# 2026-11-28 16:33:36 WIB, Docker Desktop di laptop Ridlo (Windows 11, Docker VM 9,6 GiB, 20 CPU), profile semua
+login                  LULUS  pengguna uji baru
+redis-awal             LULUS  master redis-1, galeri -> 200 lapis redis
+    sentinel: 1:X 28 Nov 2026 09:32:13.015 # +sdown master puisi 10.231.1.11 6379
+    sentinel: 1:X 28 Nov 2026 09:32:13.096 # +odown master puisi 10.231.1.11 6379 #quorum 3/2
+    sentinel: 1:X 28 Nov 2026 09:32:13.456 # +switch-master puisi 10.231.1.11 6379 10.231.1.13 6379
+redis-failover-promosi LULUS  master redis-1 dihentikan, Sentinel menunjuk redis-3 setelah 6.5 detik
+redis-failover-galat   LULUS  27 probe galeri selama failover, 0 galat, lapis {'redis': 27}, terlama 283 ms
+redis-failover-tulis   LULUS  kunci baru hal=80007: db lalu redis (cache ditulis ke master baru)
+redis-lama-jadi-replika LULUS  redis-1 menyala lagi sebagai slave, klaster kembali 1 master 2 replika
+redis-mati-ke-db       LULUS  ketiga node Redis berhenti, 10 galeri -> [200] lapis ['db'], median 31 ms, terlama 786 ms
+redis-mati-pulih       LULUS  Redis menyala lagi, master redis-3 dengan 2 replika setelah 1 detik, galeri lapis redis
+redis-stres-awal       LULUS  klaster stabil, master redis-3
+    pengguna   request      rps   P50 ms   P95 ms   P99 ms  galat %    429 %  SLO
+    40           35247    783.3     46.9     72.9     84.6     0.00    21.18  ok
+    -- throughput puncak 783.3 rps pada 40 pengguna; titik hancur SLO: tidak tercapai
+    sentinel: 1:X 28 Nov 2026 09:32:54.451 # +sdown master puisi 10.231.1.13 6379
+    sentinel: 1:X 28 Nov 2026 09:32:54.511 # +odown master puisi 10.231.1.13 6379 #quorum 2/2
+    sentinel: 1:X 28 Nov 2026 09:32:56.698 # +switch-master puisi 10.231.1.13 6379 10.231.1.12 6379
+redis-stres-promosi    LULUS  40 pengguna 45 detik, master redis-3 dihentikan pada detik 18, redis-2 menjadi master setelah 7.4 detik
+redis-stres-galat      LULUS  35247 request, 783.3 rps, P99 84.6 ms, galat 0.0 persen, 429 21.18 persen
+redis-stres-hit-pulih  LULUS  hit ratio Redis sebelum failover 55.0% (560 baca), setelah promosi 54.4% (813 baca)
+-- 12 dari 12 tahap LULUS

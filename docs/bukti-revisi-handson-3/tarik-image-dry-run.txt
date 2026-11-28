@@ -1,0 +1,22 @@
+# HOME=<folder sementara> DRY=1 bash deploy/aws/9server.sh tarik
+# 2026-11-28 16:35:23 WIB, laptop Ridlo (tanpa AWS CLI). Commit 60adeb7
+tag image: v4, gateway: v4-gw
+tercakup  localhost:5000/puisi-analisis-emosi:v4
+tercakup  localhost:5000/puisi-auth:v4
+tercakup  localhost:5000/puisi-auto-tagging:v4
+tercakup  localhost:5000/puisi-gateway:v4
+tercakup  localhost:5000/puisi-gateway:v4-gw
+tercakup  localhost:5000/puisi-klasifikasi-genre:v4
+tercakup  localhost:5000/puisi-pencarian:v4
+tercakup  localhost:5000/puisi-poem:v4
+tercakup  localhost:5000/puisi-tts:v4
+s1: docker pull localhost:5000/puisi-analisis-emosi:v4 localhost:5000/puisi-auto-tagging:v4 localhost:5000/puisi-gateway:v4 localhost:5000/puisi-gateway:v4-gw localhost:5000/puisi-pencarian:v4 
+s2: docker pull localhost:5000/puisi-analisis-emosi:v4 localhost:5000/puisi-auto-tagging:v4 localhost:5000/puisi-gateway:v4 localhost:5000/puisi-gateway:v4-gw localhost:5000/puisi-pencarian:v4 
+s3: docker pull localhost:5000/puisi-analisis-emosi:v4 localhost:5000/puisi-auto-tagging:v4 localhost:5000/puisi-gateway:v4 localhost:5000/puisi-gateway:v4-gw localhost:5000/puisi-pencarian:v4 
+s4: docker pull localhost:5000/puisi-klasifikasi-genre:v4 localhost:5000/puisi-poem:v4 
+s5: docker pull localhost:5000/puisi-klasifikasi-genre:v4 localhost:5000/puisi-poem:v4 
+s6: docker pull localhost:5000/puisi-klasifikasi-genre:v4 localhost:5000/puisi-poem:v4 
+s7: docker pull localhost:5000/puisi-auth:v4 localhost:5000/puisi-tts:v4 
+s8: docker pull localhost:5000/puisi-auth:v4 localhost:5000/puisi-tts:v4 
+s9: docker pull localhost:5000/puisi-auth:v4 localhost:5000/puisi-tts:v4 
+DRY=1: tidak ada perintah yang dikirim ke AWS.
