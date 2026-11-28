@@ -1,0 +1,420 @@
+# deploy/aws/1server/compose.yaml : versi SINGLE (non-scalable) seluruh aplikasi di SATU server.
+#
+# Tujuan: pembanding "Single" untuk versi "Scalable" 9 server (docs/PANDUAN-DEPLOY-AWS.md). Semua fitur pengguna ada
+# (auth, puisi, tag, genre, emosi, audio, pencarian; gambar kutipan lewat Lambda), tetapi SETIAP komponen hanya SATU:
+# tanpa replika, tanpa klaster, tanpa cadangan. Akibatnya setiap container adalah titik gagal tunggal (SPOF), dan itu disengaja.
+#
+#   komponen        Compose biasa (compose/*.yaml)              Single (berkas ini)
+#   gateway         2 (VRRP aktif-pasif)                        1
+#   RabbitMQ        3 node, quorum queue 3 anggota              1 node
+#   Redis           3 node + 3 Sentinel                         1 node
+#   poem-db         InnoDB Cluster 3 node + 2 router            1 MySQL biasa
+#   auth-db, tts-db 1 (di AWS 9 server: klaster 3 node)         1
+#   OpenSearch      1 (di AWS 9 server: 3 node + HAProxy)       1
+#   layanan/worker  2 replika (search-consumer 3)               1 masing-masing
+#   observability   Prometheus, Grafana, Loki, dll.             tidak dipasang
+#
+# Kode aplikasi TIDAK diubah: alamat database, Redis, dan RabbitMQ hanya diberikan lewat variabel lingkungan berisi satu host.
+# Setelan memori sama dengan versi 9 server supaya perbandingannya adil: MySQL buffer pool 64M, heap OpenSearch 384 MB.
+#
+# Dijalankan dari AKAR repositori (deploy/aws/1server.sh melakukannya di server):
+#   python3 scripts/siapkan_rahasia.py && python3 scripts/siapkan_rahasia_auth.py && python3 scripts/siapkan_rahasia_tts.py
+#   docker compose -f deploy/aws/1server/compose.yaml --project-directory . build
+#   docker compose -f deploy/aws/1server/compose.yaml --project-directory . up -d
+# CDN_URL (alamat CloudFront dari deploy/lambda/siapkan-gambar.sh) disisipkan ke frontend saat image gateway dibangun;
+# kosong berarti fitur gambar kutipan dimatikan di frontend.
+name: puisi-single
+
+x-amqp: &amqp amqp://puisi:puisi@rabbitmq-1:5672/%2F
+
+x-mysql-sehat: &mysql-sehat
+  interval: 5s
+  timeout: 5s
+  retries: 30
+  start_period: 15s
+
+x-puisi-env: &puisi-env
+  DB_WRITE_HOSTS: poem-db-1:3306
+  DB_READ_HOSTS: poem-db-1:3306
+  DB_NAME: poem_db
+  DB_USER: poem
+  DB_PASS: poem
+  REDIS_HOSTS: redis-1:6379
+  AMQP_URLS: *amqp
+  SUMBER_WAJIB: auto-tagging,klasifikasi-genre
+
+services:
+  # ---------------------------------------------------------------- infrastruktur
+  gateway:
+    # image gateway versi AWS: nginx.conf, rute, dan web/ dimasukkan ke image (sama dengan versi 9 server),
+    # ditambah 00-swarm.conf (/healthz, IP klien asli) dan 01-cloudfront.conf bila ada (rentang IP CloudFront)
+    build:
+      context: .
+      dockerfile: deploy/swarm/Dockerfile.gateway
+      args:
+        CDN_URL: ${CDN_URL:-}
+    image: puisi-gateway:single
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+  rabbitmq-1:
+    image: rabbitmq:4-management
+    hostname: rabbitmq-1
+    environment:
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_COOKIE:-puisi-cookie-single}
+    volumes:
+      - ./deploy/aws/1server/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq-1:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  redis-1:
+    image: redis:7-alpine
+    # cache murni tanpa persistensi, sama dengan redis/mulai.sh; tanpa replika dan Sentinel
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- puisi (Ridlo)
+  poem-db-1:
+    image: mysql:8.4
+    hostname: poem-db-1
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: poem
+      MYSQL_ROOT_HOST: "%"
+    # opsi sama dengan compose/puisi.yaml, tetapi tidak pernah dijadikan InnoDB Cluster (tidak ada cluster-init dan router)
+    command:
+      - --server-id=101
+      - --report-host=poem-db-1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --binlog-format=ROW
+      - --disabled-storage-engines=MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY
+      - --performance-schema=ON
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+      - --skip-name-resolve=ON
+    volumes:
+      - poem-db-1:/var/lib/mysql
+      - ./services/puisi/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppoem"]
+      <<: *mysql-sehat
+
+  poem-service:
+    build: ./services/puisi
+    image: puisi-poem:single
+    restart: unless-stopped
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-service
+    secrets:
+      - jwt_secret
+    depends_on:
+      poem-db-1:
+        condition: service_healthy
+
+  poem-relay:
+    image: puisi-poem:single
+    command: ["php", "bin/relay.php"]
+    restart: unless-stopped
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-relay
+      PORT_METRIK: "9100"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      poem-service:
+        condition: service_started
+      rabbitmq-1:
+        condition: service_healthy
+
+  poem-consumer:
+    image: puisi-poem:single
+    command: ["php", "bin/consumer.php"]
+    restart: unless-stopped
+    environment:
+      <<: *puisi-env
+      NAMA_LAYANAN: poem-consumer
+      QUEUE_HASIL: q.puisi-hasil
+      PORT_METRIK: "9100"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      poem-service:
+        condition: service_started
+      rabbitmq-1:
+        condition: service_healthy
+
+  klasifikasi-genre:
+    build: ./workers/klasifikasi-genre
+    image: puisi-klasifikasi-genre:single
+    restart: unless-stopped
+    environment:
+      AMQP_URLS: *amqp
+      QUEUE: q.klasifikasi-genre
+      NAMA_WORKER: klasifikasi-genre
+      PORT_METRIK: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- auth (Ifham)
+  auth-db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: auth_db
+      MYSQL_USER: auth
+      MYSQL_PASSWORD_FILE: /run/secrets/auth_db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/auth_db_root_password
+    command: ["--innodb-buffer-pool-size=64M", "--max-connections=100"]
+    secrets:
+      - auth_db_password
+      - auth_db_root_password
+    volumes:
+      - auth-db:/var/lib/mysql
+      - ./services/auth/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uauth -p\"$$(cat /run/secrets/auth_db_password)\""]
+      <<: *mysql-sehat
+
+  auth-service:
+    build: ./services/auth
+    image: puisi-auth:single
+    restart: unless-stopped
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: "3306"
+      DB_NAME: auth_db
+      DB_USER: auth
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets:
+      - auth_db_password
+      - jwt_secret
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/sehat') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- worker Pison dan Ray
+  auto-tagging:
+    build: ./workers/auto-tagging
+    image: puisi-auto-tagging:single
+    restart: unless-stopped
+    environment:
+      AMQP_URLS: *amqp
+      QUEUE: q.auto-tagging
+      NAMA_WORKER: auto-tagging
+      PORT_METRIK: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
+
+  analisis-emosi:
+    build: ./workers/analisis-emosi
+    image: puisi-analisis-emosi:single
+    restart: unless-stopped
+    environment:
+      AMQP_URLS: *amqp
+      QUEUE: q.analisis-emosi
+      NAMA_WORKER: analisis-emosi
+      PORT_METRIK: "9100"
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- pencarian (Evan)
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      # sama dengan deploy/aws/override-9server.yaml (versi 9 server)
+      OPENSEARCH_JAVA_OPTS: "-Xms384m -Xmx384m"
+      DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  search-service:
+    build: ./services/pencarian
+    image: puisi-pencarian:single
+    restart: unless-stopped
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis-1:6379
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  search-consumer:
+    image: puisi-pencarian:single
+    restart: unless-stopped
+    command: ["php", "bin/consumer.php"]
+    healthcheck:
+      disable: true   # HEALTHCHECK image memeriksa HTTP, consumer tidak punya server HTTP
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_HOSTS: redis-1:6379
+      AMQP_URLS: *amqp
+    depends_on:
+      search-service:
+        condition: service_started
+      rabbitmq-1:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- text-to-speech (Ifham)
+  tts-db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: tts
+      MYSQL_USER: tts
+      MYSQL_PASSWORD_FILE: /run/secrets/tts_db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/tts_db_root_password
+    command: ["--innodb-buffer-pool-size=64M", "--max-connections=100"]
+    secrets:
+      - tts_db_password
+      - tts_db_root_password
+    volumes:
+      - tts-db:/var/lib/mysql
+      - ./workers/text-to-speech/schema.sql:/docker-entrypoint-initdb.d/001-tts.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=\"$$(cat /run/secrets/tts_db_root_password)\""]
+      <<: *mysql-sehat
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.53
+    restart: unless-stopped
+    command: ["server", "-s3", "-s3.config=/run/secrets/seaweed_s3_config"]
+    secrets:
+      - seaweed_s3_config
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  tts-audio-init:
+    build:
+      context: .
+      dockerfile: workers/text-to-speech/Dockerfile
+    image: puisi-tts:single
+    restart: "no"
+    command: ["python", "init_storage.py"]
+    environment:
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_BUCKET: audio
+      TTS_INIT_STORAGE: "1"
+    secrets:
+      - s3_init_access_key
+      - s3_init_secret_key
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  text-to-speech:
+    image: puisi-tts:single
+    restart: unless-stopped
+    command: ["python", "worker.py"]
+    environment:
+      AMQP_URLS: *amqp
+      QUEUE: q.text-to-speech
+      NAMA_WORKER: text-to-speech
+      PORT_METRIK: "9100"
+      DB_HOST: tts-db
+      DB_NAME: tts
+      DB_USER: tts
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_BUCKET: audio
+    secrets:
+      - tts_db_password
+      - s3_access_key
+      - s3_secret_key
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
+      tts-db:
+        condition: service_healthy
+      tts-audio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  auth_db_password:
+    file: ./secrets/auth_db_password.txt
+  auth_db_root_password:
+    file: ./secrets/auth_db_root_password.txt
+  tts_db_password:
+    file: ./secrets/tts_db_password.txt
+  tts_db_root_password:
+    file: ./secrets/tts_db_root_password.txt
+  s3_access_key:
+    file: ./secrets/s3_access_key.txt
+  s3_secret_key:
+    file: ./secrets/s3_secret_key.txt
+  s3_init_access_key:
+    file: ./secrets/s3_init_access_key.txt
+  s3_init_secret_key:
+    file: ./secrets/s3_init_secret_key.txt
+  seaweed_s3_config:
+    file: ./secrets/seaweedfs_s3.json
+
+volumes:
+  rabbitmq-1:
+  poem-db-1:
+  auth-db:
+  opensearch-data:
+  tts-db:
+  seaweedfs-data:

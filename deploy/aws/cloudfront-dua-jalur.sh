@@ -29,7 +29,7 @@
 # (perbaikannya: deploy/swarm/gateway/buat-cloudfront-conf.sh, lalu bangun ulang image gateway). ALB masih bisa dijangkau langsung lewat HTTP.
 export AWS_PAGER=""
 REGION="${AWS_REGION:-us-east-1}"
-W="$HOME/puisi9"
+W="${W_DIR:-$HOME/puisi9}"   # versi Single memakai W_DIR=~/puisi1 dan alb-dns berisi alamat server tunggal (deploy/aws/1server.sh cloudfront)
 STATE="${STATE_FILE:-$HOME/.puisi-gambar.state}"
 WEB_DIR="${WEB_DIR:-$W/web}"
 MODE="${1:-buat}"

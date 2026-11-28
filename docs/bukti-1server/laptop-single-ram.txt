@@ -1,0 +1,34 @@
+# Uji Compose Single (deploy/aws/1server/compose.yaml) di laptop Ridlo, 2026-11-28 17:24 SEAST, Docker Desktop (VM 9,6 GiB), commit dasar 5e7a453 + berkas Single belum di-commit
+# docker compose -f deploy/aws/1server/compose.yaml --project-directory . build && up -d, lalu python scripts/uji_e2e.py --tunggu 180
+# 10 dari 10 tahap LULUS (keluaran di percakapan sesi). docker stats --no-stream sesudah uji:
+puisi-single-analisis-emosi-1 19.96MiB / 9.598GiB
+puisi-single-auth-db-1 436.1MiB / 9.598GiB
+puisi-single-auth-service-1 16.19MiB / 9.598GiB
+puisi-single-auto-tagging-1 20.14MiB / 9.598GiB
+puisi-single-gateway-1 17.93MiB / 9.598GiB
+puisi-single-klasifikasi-genre-1 17.05MiB / 9.598GiB
+puisi-single-opensearch-1 1.246GiB / 9.598GiB
+puisi-single-poem-consumer-1 17.45MiB / 9.598GiB
+puisi-single-poem-db-1-1 389.3MiB / 9.598GiB
+puisi-single-poem-relay-1 18.89MiB / 9.598GiB
+puisi-single-poem-service-1 17.86MiB / 9.598GiB
+puisi-single-rabbitmq-1-1 134.3MiB / 9.598GiB
+puisi-single-redis-1-1 5.219MiB / 9.598GiB
+puisi-single-search-consumer-1 8.703MiB / 9.598GiB
+puisi-single-search-service-1 18.78MiB / 9.598GiB
+puisi-single-seaweedfs-1 67.18MiB / 9.598GiB
+puisi-single-text-to-speech-1 248.2MiB / 9.598GiB
+puisi-single-tts-db-1 438MiB / 9.598GiB
+# keluaran uji_e2e.py (sebelum docker stats di atas):
+# gateway    LULUS  GET / -> 200
+# register   LULUS  POST /api/auth/register -> 201
+# login      LULUS  POST /api/auth/login -> 200
+# submit     LULUS  POST /api/puisi -> 202
+# detail     LULUS  GET /api/puisi/1 -> 200
+# tag        LULUS  {"keyword": ["ladang", "pergi", "beli", "padi", "pinang"], "kategori": "alam"}
+# genre      LULUS  {"genre": "pantun", "skema_rima": "abab"}
+# emosi      LULUS  {"sentimen": {"skor": 0.4, "label": "positif"}, ...
+# audio      LULUS  GET /audio/puisi_1.mp3 -> 200
+# pencarian  LULUS  GET /api/search?q=pinang -> 200, 1 hasil, ditemukan di halaman 1
+# -- 10 dari 10 tahap LULUS
+# Jumlah 18 container (tts-audio-init sudah selesai): sekitar 3161 MiB. RAM t3.small sekitar 1,9 GB, jadi di AWS sebagian masuk swap.

@@ -278,6 +278,18 @@ EOF
   fi
   echo "kebijakan: cache-S3=$CP_OPT  cache-fungsi=$CP_QS  origin-request=$ORP"
 
+  # Versi Single (deploy/aws/1server.sh) hanya memakai SATU distribusi CloudFront, yaitu distribusi dua jalur dari
+  # deploy/aws/cloudfront-dua-jalur.sh. Distribusi gambar di bawah tidak dibutuhkan di sana; bucket, Lambda, dan kebijakan cache tetap dibuat.
+  if [ "${TANPA_CLOUDFRONT:-}" = "1" ]; then
+    echo; echo "TANPA_CLOUDFRONT=1: distribusi CloudFront gambar TIDAK dibuat (dibuat sekali saja oleh cloudfront-dua-jalur.sh)."
+    echo "================ RINGKASAN ================"
+    echo "bucket     : $B"
+    echo "fungsi     : $FUNCTION_NAME"
+    echo "kebijakan cache /fungsi: $CP_QS"
+    echo "uji Lambda langsung: lulus (langkah 4/5)"
+    return 0
+  fi
+
   local DOMAIN=""
   DID="$(guna DISTRIBUTION_ID)"
   if [ -n "$DID" ] && DOMAIN="$(aws cloudfront get-distribution --id "$DID" --query Distribution.DomainName --output text 2>/dev/null)" && [ -n "$DOMAIN" ] && [ "$DOMAIN" != "None" ]; then
