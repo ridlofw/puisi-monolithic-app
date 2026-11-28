@@ -113,14 +113,16 @@ Semuanya harus `CR=0`. Bila ada yang bukan 0, ubah berkas itu ke LF di laptop (G
 > **Kode di `main` sekarang sudah memuat perubahan Bab 10 dan 11 (Pison)** dan semua image memakai tag `v4` (gateway final `v4-gw`) sebagai bawaan. Bukti di bagian 11 yang tertulis `v1` sampai `v3`
 > dihasilkan oleh kode sebelum perubahan itu. Baca bagian **10b** sebelum men-deploy.
 
-**Cara A (belum pernah dijalankan; butuh `deploy/` sudah di-push ke GitHub):** hanya CloudShell, tanpa unggah.
+**Cara A (dijalankan dari nol 24 Nov 2026; butuh `deploy/` sudah di-push ke GitHub):** hanya CloudShell, tanpa unggah.
 
 ```bash
 git clone https://github.com/ridlofw/puisi-monolithic-app.git ~/puisi-monolithic-app && cd ~/puisi-monolithic-app
 tar czf ~/kode.tgz --exclude=node_modules --exclude=__pycache__ --exclude=.git --exclude=secrets \
   services workers gateway web compose compose.yaml rabbitmq deploy scripts kontrak observability lambda
-cp deploy/aws/*.sh ~/ && cd ~
+cp deploy/aws/*.sh ~/ && cd ~ && tar xzf ~/kode.tgz -C ~ deploy
 ```
+
+Baris `tar xzf ... deploy` menyiapkan `~/deploy` yang dipakai langkah 17 dan bagian 8. Baris ini ditambahkan setelah dijalankan 24 Nov 2026; sebelumnya folder itu tidak terbentuk di cara A.
 
 ---
 
@@ -289,6 +291,8 @@ seluruh sesi ini memakai sekitar $2,5 menurut penghitung lab (angkanya tertingga
 | CloudFront: `NoSuchKey` di akar distribusi dari langkah 9 | normal: bucket hanya berisi latar | pakai alamat dari langkah 17 |
 | CloudShell: `Too Many Requests` saat unggah; `SUSPENDED` | batas laju unggahan; lingkungan tidur karena diam | beri jeda; tunggu lingkungan menyala, ulangi |
 | Semua hilang di tengah jalan | timer lab habis | mulai lagi dari **Start Lab**; `kode.tgz` di laptop tetap ada |
+| `rabbit` mencetak `Error: {:aborted_feature_flags_compat_check, {:error, :noconnection}}` saat join node 2 | join sempat gagal karena node 1 belum terjangkau (terjadi 24 Nov) | tunggu sekitar 1 menit, lalu `bash ~/9server.sh rabbit` (aman diulang) |
+| `q.tap` hanya punya 2 anggota (`rabbit@rabbitmq-1`, `-2`) walaupun `rabbit` sudah lulus (terjadi 24 Nov; penyebab `grow` belum diselidiki) | `grow` tidak mengenai `q.tap` | `docker exec <rabbitmq-1> rabbitmq-queues add_member -p / q.tap rabbit@rabbitmq-3`; periksa dengan `rabbitmqctl list_queues name type members`, semua antrean quorum harus memuat tiga node |
 
 ---
 
@@ -370,17 +374,17 @@ Pakai `TAG` yang **sama** di semua perintah itu (bawaan `v4`; tag baru berikutny
 |---|---|
 | 1 luncurkan, 3 kode, 4 image, 5 deploy, 8 alb, 9 siapkan-gambar, 11 image2, 13 pasang pencarian, 14 pasang tts | **Dijalankan di AWS 23 Nov 2026 persis seperti tertulis** |
 | 2 swarm | Dijalankan; pemeriksaan `grep -q active` diperbaiki menjadi `grep -qx active` sesudah menemukan bug, lalu dijalankan ulang |
-| 6 rabbit | Dijalankan: jalur manual dan jalur "lewati" (node sudah anggota). Jalur "bergabung" versi berpenjaga **belum diuji sebagai skrip** (langkahnya identik dengan manual) |
+| 6 rabbit | Dijalankan: jalur manual dan jalur "lewati" (node sudah anggota). Jalur "bergabung" sebagai skrip diuji 24 Nov: node 2 sempat `noconnection`, lalu lulus. `grow` belum menambahkan `q.tap` ke node 3, diperbaiki manual (bagian 9) |
 | 7 verifikasi, 16 verifikasi | Dijalankan: 8/10 pada tahap 1, dan **10/10** dengan versi skrip terbaru (`--tunggu 150`, pengujian ulang di bawah) |
 | 10 gateway | Perintah-perintahnya dijalankan manual (v2, lalu v3: rolling update sungguhan, tiga task `v3`). Sebagai **skrip** dijalankan sekali pada pengujian ulang, tetapi image-nya identik dengan yang berjalan, jadi **penggantian task lewat skrip belum terbukti** |
-| 12 stack2 | Versi pertama dijalankan di tahap 2. Versi terbaru dijalankan ulang: gateway tetap `v3`, tidak ada layanan lama diganti, tetapi pemeriksaan "task baru" memberi **positif palsu** (lihat di bawah); polanya sudah diperbaiki dan diuji di laptop, **versi perbaikannya belum dijalankan di AWS** |
+| 12 stack2 | Versi pertama dijalankan di tahap 2. Versi terbaru dijalankan ulang: gateway tetap `v3`, tidak ada layanan lama diganti, tetapi pemeriksaan "task baru" memberi **positif palsu** (lihat di bawah); polanya sudah diperbaiki dan diuji di laptop, versi perbaikan dijalankan 24 Nov; pemeriksaan "task baru" masih menandai task `gateway` dari langkah 10 (dijalankan beberapa menit sebelumnya, itu wajar) |
 | 15 hitung | **Dijalankan: `39 layanan penuh, 0 belum; total 39`**, 6 `Ready`, 1 `Leader`, 2 `Reachable` |
 | 17 cloudfront-dua-jalur | Dijalankan: 8/8 uji. Lalu `uji()` diperbaiki (peringatan `null byte`) dan **dijalankan ulang: 8/8 tanpa peringatan** (distribusi yang ada dipakai ulang) |
 | 18 e2e lewat CloudFront | **Dijalankan: 10/10** |
-| Cara A (`git clone`) | **Belum pernah dijalankan** |
-| Bagian 8 (uji ketahanan) | Dijalankan dengan 23 layanan, lewat konsol EC2. **Belum dengan 38 layanan**, dan versi CLI belum dijalankan |
+| Cara A (`git clone`) | **Dijalankan 24 Nov 2026 dari nol** (langkah 1 sampai 18 dan ujibaru; lihat tabel 24 Nov di bawah) |
+| Bagian 8 (uji ketahanan) | Dijalankan dengan 23 layanan, lewat konsol EC2. 24 Nov dijalankan dengan 39 layanan, probe tulis, dan lewat CLI (`aws ec2 stop-instances`) |
 | Bagian 8b (membersihkan, semua perintah `hapus`) | **Belum pernah dijalankan** |
-| **Deploy ulang dari nol memakai dokumen ini dalam satu kali jalan** | **BELUM.** Tahap 2 dikerjakan di atas tahap 1 yang sedang berjalan, dan urutan "langkah 10 sebelum 11 sampai 15" baru berlaku sesudah override menunjuk `v3` |
+| **Deploy ulang dari nol memakai dokumen ini dalam satu kali jalan** | **SUDAH (24 Nov 2026, cara A)**, dengan dua intervensi kecil: satu baris `tar` (sudah masuk bagian 4) dan perbaikan manual `q.tap` (bagian 9) |
 
 **Pengujian ulang (sore 23 Nov 2026, pada sistem yang sama yang sedang berjalan, memakai skrip terbaru):**
 
@@ -410,8 +414,8 @@ Pakai `TAG` yang **sama** di semua perintah itu (bawaan `v4`; tag baru berikutny
 | Uji matikan PRIMARY poem-db dengan probe tulis | **s6** (poem-db-3 PRIMARY, poem-service, relay, consumer) di-Stop 17:28:19 UTC lewat CLI. PRIMARY pindah ke **poem-db-1** (sudah terbaca di pemeriksaan 17:30:01, yaitu paling lambat 102 detik sesudah Stop). Pemantau lewat ALB (1 GET per detik, 1 tulis berkunci tiap 5 detik) selama 17:27:49 sampai 17:35:49: **0 baris gagal**, tidak ada tulis yang perlu dikirim ulang. s6 dinyalakan 17:30:29; poem-db-3 kembali **ONLINE (SECONDARY)** sebelum 17:32:20 (kurang dari 2 menit); `hitung` 39 penuh. `verifikasi` sesudahnya: **e2e 10 dari 10** |
 | Memori dengan model Piper termuat terus-menerus | Tersedia (MB) sebelum, lalu sesudah pembaruan: s7 216 lalu 179, s8 374 lalu 497, s9 339 lalu 401; swap: s7 296 lalu 402, s8 502 lalu 636, s9 387 lalu 733 MB. Worker suara kini di **s9** (catatan penempatan lama: s8); kontainernya 277 MiB. Server paling ketat: **s7 (179 MB tersedia)**. Tidak ada OOM dan tidak ada layanan mati. Memori tetap tipis; ukur lagi di bawah beban banyak pengguna |
 | Galat di log (15 menit sesudah pembaruan) | `Too many connections`, `gone away`, `circuit ... open`, `Fatal`, `Uncaught`, `SQLSTATE`: **0** di poem-service, poem-relay, auth-service, search-service |
-| Skrip `image` yang diperbaiki (`127.0.0.1`, registry tidak dipasang ulang) | **Belum dijalankan** (lihat pelajaran di atas) |
-| Deploy dari nol dengan kode baru dalam satu kali jalan | **BELUM** |
+| Skrip `image` yang diperbaiki (`127.0.0.1`, registry tidak dipasang ulang) | **Dijalankan 24 Nov** pada registry baru: 6 image `v4` lulus. Cabang yang melewati pemasangan ulang registry belum diuji |
+| Deploy dari nol dengan kode baru dalam satu kali jalan | **SUDAH (24 Nov, cara A)**, dengan perbaikan manual `q.tap` RabbitMQ (bagian 9) |
 | `search-consumer` 3 replika (opsional) | **BELUM**, bawaan tetap 1 |
 | Beban banyak pengguna (batas `max_connections = 100` dengan koneksi persisten) | **BELUM**; hanya diuji dengan lalu lintas kecil. Tombol darurat tetap disiapkan di `override-9server.yaml` |
 
@@ -419,7 +423,17 @@ Cuplikan keluaran aslinya: [`docs/bukti-aws/log-cloudshell/uji-pison-23nov.txt`]
 
 Sisa data uji di aplikasi: pemantau dan `ujibaru` membuat sekitar 200 puisi berjudul `Uji pantau ...` dan `Uji idempotensi ...` (akun `uji...`), selain puisi `Pagi di Ladang` dari `uji_e2e.py`. Hapus bila galeri harus bersih untuk demo.
 
-Disarankan: sebelum dikirim sebagai "terbukti 100%" ke dosen atau tim lain, jalankan dokumen ini **dari nol di sesi lab baru** dan perbarui tabel di atas.
+**Sesi 24 Nov 2026 (cara A: `git clone` dari nol di sesi lab baru; folder sisa sesi lama dipindah ke nama `*.lama-23nov`, dan tidak ada sumber daya AWS yang tersisa):**
+
+| Yang dibuktikan | Hasil |
+|---|---|
+| Langkah 1 sampai 16 seperti tertulis (`luncurkan`, `swarm`, `kode`, `image`, `deploy`, `rabbit`, `alb buat`, `siapkan-gambar`, `gateway`, `image2`, `stack2`, `pasang pencarian`, `pasang tts`, `hitung`, `verifikasi`) | Lulus dengan satu perbaikan manual. `rabbit` mencetak `noconnection` saat node 2 join (diulang sesudah itu, lulus), dan `grow` tidak menambahkan node 3 ke `q.tap` (hanya 2 anggota). Diperbaiki dengan `rabbitmq-queues add_member -p / q.tap rabbit@rabbitmq-3`; sesudah itu 13 dari 13 antrean quorum punya 3 anggota. `hitung`: 39 layanan penuh, 0 belum. `verifikasi`: 10 dari 10 |
+| Langkah 17 (CloudFront dua jalur) dan 18 (uji HTTPS) | `buat`: uji 8 dari 8. `uji_e2e.py` lewat HTTPS: 10 dari 10. CloudShell sempat diam dan suspend saat langkah 17 berjalan; setelah disambung, log-nya lengkap |
+| `ujibaru` | 9 dari 9 pemeriksaan lulus |
+| Uji matikan PRIMARY poem-db dengan probe tulis (`pantau --detik 600 --selang-tulis 5`; server 4 dimatikan lewat `aws ec2 stop-instances` sekitar 03:04:30 jam CloudShell, dinyalakan 03:06:45) | PRIMARY pindah dari poem-db-1 ke poem-db-3 sekitar 100 detik sesudah stop. **GET 600 (gagal 0); tulis 120 (gagal 0, dikirim ulang 0 kali).** poem-db-1 kembali ONLINE (SECONDARY) sebelum 03:09 |
+| Verifikasi sesudah failover | `hitung` 39 penuh, 0 belum. `verifikasi` 10 dari 10 dengan poem-db 3 ONLINE dan auth-db 3 ONLINE. `uji_e2e.py` lewat HTTPS 10 dari 10 |
+
+Yang masih BELUM: beban banyak pengguna (batas `max_connections = 100`, bagian 10b); `search-consumer` 3 replika (opsional); bagian 8b (`hapus`) belum dijalankan. Log asli ada di CloudShell (`~/puisi9/log-*.txt`, `mon-tulis.log`) dan belum diunduh ke repositori.
 
 ---
 
